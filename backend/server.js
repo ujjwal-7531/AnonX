@@ -5,6 +5,8 @@ require("dotenv").config();
 const authRoutes = require("./src/routes/authRoutes");
 const rateLimit = require("express-rate-limit");
 const userRoutes = require("./routes/userRoutes");
+const messageRoutes = require("./routes/messageRoutes");
+const conversationRoutes = require("./routes/conversationRoutes");
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -26,6 +28,8 @@ app.use(limiter);
 app.use("/auth", authRoutes);
 app.use("/auth", authLimiter);
 app.use("/users", userRoutes);
+app.use("/messages", messageRoutes);
+app.use("/conversations", conversationRoutes);
 
 app.get("/", (req, res) => {
   res.send("AnonX backend running");

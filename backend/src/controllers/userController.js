@@ -1,5 +1,7 @@
 const User = require("../models/User");
 const Block = require("../models/Block");
+const Conversation = require("../models/Conversation");
+const generateAlias = require("../utils/generateAlias");
 
 const searchUser = async (req, res) => {
   try {
@@ -52,8 +54,37 @@ const searchUser = async (req, res) => {
     //   });
     // }
 
+    // res.status(200).json({
+    //   userCode: user.userCode
+    // });
+
+    // checks if conversation exists
+    const codes = [currentUserCode, userCode].sort();
+    const conversationKey = `${codes[0]}_${codes[1]}`;
+
+    let conversation = await Conversation.findOne({ conversationKey });
+
+    if (!conversation) {
+
+        const aliasForA = generateAlias();
+        const aliasForB = generateAlias();
+
+        conversation = new Conversation({
+            conversationKey,
+            userA: codes[0],
+            userB: codes[1],
+            aliasForA,
+            aliasForB
+        });
+
+        await conversation.save();
+    }
+
     res.status(200).json({
-      userCode: user.userCode
+        conversationId: conversation._id,
+        alias: conversation.userA === currentUserCode
+            ? conversation.aliasForA
+            : conversation.aliasForB
     });
 
   } catch (error) {

@@ -27,6 +27,16 @@ const conversationSchema = new mongoose.Schema({
     required: true
   },
 
+  nicknameForA: {
+    type: String,
+    default: null
+  },
+
+  nicknameForB: {
+    type: String,
+    default: null
+  },
+
   countAtoB: {
     type: Number,
     default: 0
