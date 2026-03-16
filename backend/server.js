@@ -4,6 +4,7 @@ const connectDB = require("./src/config/db");
 require("dotenv").config();
 const authRoutes = require("./src/routes/authRoutes");
 const rateLimit = require("express-rate-limit");
+const userRoutes = require("./routes/userRoutes");
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -24,6 +25,7 @@ app.use(express.json());
 app.use(limiter);
 app.use("/auth", authRoutes);
 app.use("/auth", authLimiter);
+app.use("/users", userRoutes);
 
 app.get("/", (req, res) => {
   res.send("AnonX backend running");
