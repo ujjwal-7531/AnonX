@@ -111,10 +111,6 @@ const getUserConversations = async (req, res) => {
 };
 
 module.exports = {
-  getUserConversations
-};
-
-module.exports = {
   updateNickname,
   getUserConversations
 };

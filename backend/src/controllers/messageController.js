@@ -1,6 +1,5 @@
 const Message = require("../models/Message");
 const Conversation = require("../models/Conversation");
-const Block = require("../models/Block");
 
 const getMessages = async (req, res) => {
   try {
@@ -129,7 +128,45 @@ const sendMessage = async (req, res) => {
   }
 };
 
+const markAsRead = async (req, res) => {
+  try {
+
+    const { conversationId } = req.params;
+    const { currentUserCode } = req.body;
+
+    if (!conversationId || !currentUserCode) {
+      return res.status(400).json({
+        message: "conversationId and currentUserCode are required"
+      });
+    }
+
+    await Message.updateMany(
+      {
+        conversationId,
+        sender: { $ne: currentUserCode },
+        isRead: false
+      },
+      {
+        isRead: true
+      }
+    );
+
+    res.status(200).json({
+      message: "Messages marked as read"
+    });
+
+  } catch (error) {
+
+    console.error("Mark read error:", error.message);
+
+    res.status(500).json({
+      message: "Server error"
+    });
+  }
+};
+
 module.exports = {
   sendMessage,
-  getMessages
+  getMessages,
+  markAsRead
 };

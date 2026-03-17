@@ -97,6 +97,85 @@ const searchUser = async (req, res) => {
   }
 };
 
+const blockUser = async (req, res) => {
+  try {
+
+    const { currentUserCode, targetUserCode } = req.body;
+
+    if (!currentUserCode || !targetUserCode) {
+      return res.status(400).json({
+        message: "Both user codes are required"
+      });
+    }
+
+    if (currentUserCode === targetUserCode) {
+      return res.status(400).json({
+        message: "You cannot block yourself"
+      });
+    }
+
+    const existing = await Block.findOne({
+      blocker: currentUserCode,
+      blocked: targetUserCode
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        message: "User already blocked"
+      });
+    }
+
+    await Block.create({
+      blocker: currentUserCode,
+      blocked: targetUserCode
+    });
+
+    res.status(200).json({
+      message: "User blocked successfully"
+    });
+
+  } catch (error) {
+
+    console.error("Block error:", error.message);
+
+    res.status(500).json({
+      message: "Server error"
+    });
+  }
+};
+
+const unblockUser = async (req, res) => {
+  try {
+
+    const { currentUserCode, targetUserCode } = req.body;
+
+    const result = await Block.findOneAndDelete({
+      blocker: currentUserCode,
+      blocked: targetUserCode
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        message: "Block record not found"
+      });
+    }
+
+    res.status(200).json({
+      message: "User unblocked successfully"
+    });
+
+  } catch (error) {
+
+    console.error("Unblock error:", error.message);
+
+    res.status(500).json({
+      message: "Server error"
+    });
+  }
+};
+
 module.exports = {
-  searchUser
+  searchUser,
+  blockUser,
+  unblockUser
 };
