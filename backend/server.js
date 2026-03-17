@@ -4,9 +4,9 @@ const connectDB = require("./src/config/db");
 require("dotenv").config();
 const authRoutes = require("./src/routes/authRoutes");
 const rateLimit = require("express-rate-limit");
-const userRoutes = require("./routes/userRoutes");
-const messageRoutes = require("./routes/messageRoutes");
-const conversationRoutes = require("./routes/conversationRoutes");
+const userRoutes = require("./src/routes/userRoutes");
+const messageRoutes = require("./src/routes/messageRoutes");
+const conversationRoutes = require("./src/routes/conversationRoutes");
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
