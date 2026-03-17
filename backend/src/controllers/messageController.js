@@ -102,6 +102,7 @@ const sendMessage = async (req, res) => {
       messageText
     });
 
+    global.io.to(conversationId).emit("receive_message", message);
     await message.save();
 
     // update counters

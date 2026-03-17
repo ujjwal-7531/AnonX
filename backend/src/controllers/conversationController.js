@@ -1,4 +1,5 @@
 const Conversation = require("../models/Conversation");
+const Message = require("../models/Message");
 
 const updateNickname = async (req, res) => {
   try {
@@ -48,6 +49,72 @@ const updateNickname = async (req, res) => {
   }
 };
 
+const getUserConversations = async (req, res) => {
+  try {
+
+    const { userCode } = req.params;
+
+    if (!userCode) {
+      return res.status(400).json({
+        message: "User code is required"
+      });
+    }
+
+    // find all conversations of user
+    const conversations = await Conversation.find({
+      $or: [
+        { userA: userCode },
+        { userB: userCode }
+      ]
+    });
+
+    const result = [];
+
+    for (let conv of conversations) {
+
+      let displayName;
+      let unreadCount = 0;
+
+      // determine display name
+      if (conv.userA === userCode) {
+        displayName = conv.nicknameForA || conv.aliasForA;
+      } else {
+        displayName = conv.nicknameForB || conv.aliasForB;
+      }
+
+      // count unread messages
+      unreadCount = await Message.countDocuments({
+        conversationId: conv._id,
+        sender: { $ne: userCode },
+        isRead: false
+      });
+
+      result.push({
+        conversationId: conv._id,
+        displayName,
+        unreadCount
+      });
+    }
+
+    res.status(200).json({
+      conversations: result
+    });
+
+  } catch (error) {
+
+    console.error("Fetch conversations error:", error.message);
+
+    res.status(500).json({
+      message: "Server error"
+    });
+  }
+};
+
 module.exports = {
-  updateNickname
+  getUserConversations
+};
+
+module.exports = {
+  updateNickname,
+  getUserConversations
 };
