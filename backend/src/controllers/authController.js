@@ -5,16 +5,17 @@ const generateUserCode = require("../utils/generateUserCode");
 const generateOTP = require("../utils/generateOTP");
 const validateEmail = require("../utils/validateEmail");
 const sendOTPEmail = require("../utils/sendOTPEmail");
+const bcrypt = require("bcrypt");
 
 
 // register user
 const registerUser = async (req, res) => {
   try {
-    let { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+    let { email,password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
     }
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     email = email.trim().toLowerCase();
 
@@ -42,14 +43,15 @@ const registerUser = async (req, res) => {
 
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    await sendOTPEmail(email, otp);
 
     await OTP.create({
       email,
       otp,
+      password: hashedPassword,
       expiresAt,
       attempts: 0
     });
+    await sendOTPEmail(email, otp);
 
     console.log(`OTP sent successfully to ${email}`);
 
@@ -122,11 +124,19 @@ const verifyOTP = async (req, res) => {
       });
     }
 
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        message: "User already exists"
+      });
+    }
+
     // create user after verification
     const userCode =await generateUserCode();
 
     const newUser = new User({
       email,
+      password: otpRecord.password,
       userCode,
       isVerified: true
     });
@@ -155,11 +165,11 @@ const verifyOTP = async (req, res) => {
 // login user
 const loginUser = async (req, res) => {
   try {
-    let { email } = req.body;
+    let { email, password } = req.body;
 
-    if (!email) {
+    if (!email || !password) {
       return res.status(400).json({
-        message: "Email is required"
+        message: "Email and password are required"
       });
     }
 
@@ -198,6 +208,7 @@ const loginUser = async (req, res) => {
       await OTP.create({
         email,
         otp,
+        password: user.password,
         expiresAt,
         attempts: 0
       });
@@ -208,6 +219,13 @@ const loginUser = async (req, res) => {
 
       return res.status(200).json({
         message: "Please verify your email. OTP sent."
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "Invalid credentials"
       });
     }
 

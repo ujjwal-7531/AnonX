@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { getMessages, sendMessage } = require("../controllers/messageController");
+const { getMessages, sendMessage, markAsRead } = require("../controllers/messageController");
 
 router.get("/:conversationId", getMessages);
 router.post("/send", sendMessage);
