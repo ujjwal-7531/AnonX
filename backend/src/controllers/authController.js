@@ -142,11 +142,9 @@ const verifyOTP = async (req, res) => {
     });
 
     await newUser.save();
-
     await OTP.deleteMany({ email });
 
     console.log(`Email ${email} verified successfully`);
-
     res.status(201).json({
       message: "Email verified and account created",
       userCode
@@ -156,7 +154,8 @@ const verifyOTP = async (req, res) => {
     console.error(error);
 
     res.status(500).json({
-      message: "Server error"
+      message: "Server error",
+      error: error
     });
   }
 };
