@@ -7,6 +7,7 @@ function Signup() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   const validate = () => {
@@ -30,6 +31,8 @@ function Signup() {
   const handleSendOTP = async () => {
     setMessage("");
     if (!validate()) return;
+    
+    setIsLoading(true);
 
     try {
       const res = await axios.post("http://localhost:5000/auth/register", {
@@ -39,11 +42,13 @@ function Signup() {
 
       setMessage("OTP sent! Redirecting to verification...");
       setTimeout(() => {
-        navigate("/verify", { state: { email, password } });
+        navigate("/verify-otp", { state: { email, password } });
       }, 1500);
 
     } catch (error) {
       setMessage(error.response?.data?.message || "Error occurred");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -86,9 +91,10 @@ function Signup() {
 
         <button
           onClick={handleSendOTP}
-          className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-3 rounded-lg shadow-lg hover:shadow-indigo-500/25 hover:from-indigo-400 hover:to-purple-500 active:scale-[0.98] transition-all duration-200 font-medium"
+          disabled={isLoading}
+          className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-3 rounded-lg shadow-lg hover:shadow-indigo-500/25 hover:from-indigo-400 hover:to-purple-500 active:scale-[0.98] transition-all duration-200 font-medium disabled:opacity-50"
         >
-          Sign Up
+          {isLoading ? "Sending OTP..." : "Sign Up"}
         </button>
 
         {message && (

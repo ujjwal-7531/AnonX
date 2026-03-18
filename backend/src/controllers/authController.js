@@ -30,12 +30,12 @@ const registerUser = async (req, res) => {
       return res.status(409).json({ message: "Email already registered" });
     }
 
-    // check if OTP already sent recently
+    // check if OTP already sent recently (1 minute cooldown hack)
     const existingOTP = await OTP.findOne({ email });
 
-    if (existingOTP && existingOTP.expiresAt > new Date()) {
+    if (existingOTP && (existingOTP.expiresAt.getTime() - Date.now() > 4 * 60 * 1000)) {
       return res.status(429).json({
-        message: "OTP already sent. Please wait before requesting another."
+        message: "OTP already sent. Please wait 1 minute before requesting another."
       });
     }
 
@@ -116,7 +116,7 @@ const verifyOTP = async (req, res) => {
     }
 
     // wrong OTP
-    if (otpRecord.otp !== otp) {
+    if (String(otpRecord.otp.toString()).trim() !== otp.toString().trim()) {
       otpRecord.attempts += 1;
       await otpRecord.save();
 

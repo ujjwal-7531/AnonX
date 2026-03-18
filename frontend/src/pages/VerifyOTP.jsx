@@ -47,7 +47,7 @@ function VerifyOTP() {
 
     try {
         const res = await axios.post(
-          "http://localhost:5000/auth/verify",
+          "http://localhost:5000/auth/verify-otp",
           { email, otp }
         );
 
@@ -64,16 +64,19 @@ function VerifyOTP() {
   };
 
   useEffect(() => {
-    let interval;
-    if (timer > 0 && !canResend) {
-        interval = setInterval(() => {
-          setTimer((prev) => prev - 1);
-        }, 1000);
-    } else if (timer === 0) {
-        setCanResend(true);
-    }
+    if (canResend) return;
+    const interval = setInterval(() => {
+      setTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setCanResend(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
     return () => clearInterval(interval);
-  }, [timer, canResend]);
+  }, [canResend]);
 
   const handleResendOTP = async () => {
     setCanResend(false);

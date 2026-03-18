@@ -1,9 +1,8 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
-
-function Chat() {
+import toast from "react-hot-toast";function Chat() {
   const [conversations, setConversations] = useState([]);
   const [selectedConv, setSelectedConv] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -113,7 +112,14 @@ function Chat() {
     // Check if chat already exists locally
     const existingChat = conversations.find(c => c.targetUserCode === searchCode.trim());
     if (existingChat) {
-      alert("Chat already exists!");
+      toast("Chat is already actively open", {
+        icon: "✨",
+        style: {
+          background: '#2d2d2d',
+          color: '#e0e0e0',
+          fontSize: '13px'
+        }
+      });
       setSelectedConv(existingChat);
       setSearchCode("");
       return;
@@ -190,7 +196,7 @@ function Chat() {
       setSelectedConv(prev => ({ ...prev, sentCount: (prev.sentCount || 0) + 1 }));
     } catch (error) {
       setMessageText(textToSend); // Restore text so they don't lose it
-      alert(error.response?.data?.message || "Error sending message");
+      toast.error(error.response?.data?.message || "Error sending message");
     }
   };
 
@@ -201,61 +207,87 @@ function Chat() {
     navigate("/login");
   };
 
-  const handleSetAlias = async () => {
-    const newAlias = prompt("Enter new nickname for this user:");
-    if (!newAlias?.trim() || !selectedConv) return;
-    try {
-      await axios.patch(`http://localhost:5000/conversations/${selectedConv.conversationId || selectedConv._id}/nickname`, {
-        currentUserCode: userCode,
-        nickname: newAlias.trim()
-      });
-      setConversations(prev => prev.map(c => {
-        if ((c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id)) {
-          return { ...c, displayName: newAlias.trim() };
-        }
-        return c;
-      }));
-      setSelectedConv(prev => ({ ...prev, displayName: newAlias.trim() }));
-    } catch (error) {
-      alert("Failed to update alias");
-    }
+  const handleSetAlias = () => {
+    if (!selectedConv) return;
+    toast((t) => (
+      <div className="flex flex-col gap-3 w-52 relative">
+        <span className="font-bold text-[14px] text-white tracking-wide">Set Nickname</span>
+        <button onClick={() => toast.dismiss(t.id)} className="absolute -top-1 -right-1 text-neutral-500 hover:text-white text-lg">&times;</button>
+        <input 
+          id="toast-alias-input" 
+          className="bg-neutral-900 border border-neutral-700/50 p-2.5 text-white rounded-lg text-[13px] outline-none focus:border-indigo-500/50 shadow-inner" 
+          placeholder="Enter new nickname..." 
+          autoFocus 
+          onKeyDown={(e) => {
+            if(e.key === 'Enter') document.getElementById('save-alias-btn').click();
+          }}
+        />
+        <button 
+          id="save-alias-btn"
+          className="text-xs bg-indigo-600 hover:bg-indigo-500 px-3 py-2.5 rounded-lg text-white font-bold transition-all shadow-md mt-1" 
+          onClick={async () => {
+            const val = document.getElementById('toast-alias-input').value;
+            if (!val.trim()) { toast.error("Nickname cannot be empty"); return; }
+            toast.dismiss(t.id);
+            try {
+              await axios.patch(`http://localhost:5000/conversations/${selectedConv.conversationId || selectedConv._id}/nickname`, {
+                currentUserCode: userCode,
+                nickname: val.trim()
+              });
+              setConversations(prev => prev.map(c => 
+                (c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id) ? { ...c, displayName: val.trim() } : c
+              ));
+              setSelectedConv(prev => ({ ...prev, displayName: val.trim() }));
+              toast.success("Alias updated");
+            } catch (error) { toast.error("Failed to update alias"); }
+        }}>Save Alias</button>
+      </div>
+    ), { duration: Infinity });
   };
 
-  const handleBlockUser = async () => {
-    if (!selectedConv?.targetUserCode) return alert("Target user code missing. Try refreshing.");
-    if (confirm("Are you sure you want to block this user?")) {
-      try {
-        await axios.post("http://localhost:5000/users/block", {
-          currentUserCode: userCode,
-          targetUserCode: selectedConv.targetUserCode
-        });
-        alert("User blocked successfully");
-        // Update local state dynamically
-        setConversations(prev => prev.map(c => 
-          (c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id) ? {...c, isBlocked: true} : c
-        ));
-        setSelectedConv(prev => ({...prev, isBlocked: true}));
-      } catch (error) {
-        alert(error.response?.data?.message || "Failed to block user");
-      }
-    }
+  const handleBlockUser = () => {
+    if (!selectedConv?.targetUserCode) { toast.error("Target user code missing. Try refreshing."); return; }
+    
+    toast((t) => (
+      <div className="flex flex-col gap-2 relative w-52">
+        <span className="font-bold text-sm text-white tracking-wide">Block this user?</span>
+        <p className="text-[11px] text-neutral-400">They will no longer be able to message you.</p>
+        <button onClick={() => toast.dismiss(t.id)} className="absolute -top-1 -right-1 text-neutral-500 hover:text-white text-lg">&times;</button>
+        <div className="flex gap-2 mt-2 w-full">
+          <button className="text-[12px] bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 px-3 py-2 rounded-lg font-bold w-full transition-colors" onClick={async () => {
+            toast.dismiss(t.id);
+            try {
+              await axios.post("http://localhost:5000/users/block", {
+                currentUserCode: userCode,
+                targetUserCode: selectedConv.targetUserCode
+              });
+              toast.success("User blocked successfully");
+              setConversations(prev => prev.map(c => 
+                (c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id) ? {...c, isBlocked: true} : c
+              ));
+              setSelectedConv(prev => ({...prev, isBlocked: true}));
+            } catch (error) { toast.error(error.response?.data?.message || "Failed to block user"); }
+          }}>Yes, Block</button>
+        </div>
+      </div>
+    ), { duration: Infinity });
   };
 
   const handleUnblockUser = async () => {
-    if (!selectedConv?.targetUserCode) return alert("Target user code missing. Try refreshing.");
+    if (!selectedConv?.targetUserCode) { toast.error("Target user code missing. Try refreshing."); return; }
     try {
       await axios.post("http://localhost:5000/users/unblock", {
         currentUserCode: userCode,
         targetUserCode: selectedConv.targetUserCode
       });
-      alert("User unblocked successfully");
+      toast.success("User unblocked successfully");
       // Update local state dynamically
       setConversations(prev => prev.map(c => 
         (c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id) ? {...c, isBlocked: false} : c
       ));
       setSelectedConv(prev => ({...prev, isBlocked: false}));
     } catch (error) {
-      alert(error.response?.data?.message || "Failed to unblock user");
+      toast.error(error.response?.data?.message || "Failed to unblock user");
     }
   };
 
