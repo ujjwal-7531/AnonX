@@ -47,6 +47,16 @@ const conversationSchema = new mongoose.Schema({
     default: 0
   },
 
+  lastMessageEpochA: {
+    type: Date,
+    default: null
+  },
+
+  lastMessageEpochB: {
+    type: Date,
+    default: null
+  },
+
   createdAt: {
     type: Date,
     default: Date.now

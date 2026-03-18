@@ -80,14 +80,16 @@ const searchUser = async (req, res) => {
         await conversation.save();
     }
 
+    const todayEpoch = new Date().setUTCHours(0,0,0,0);
+
     res.status(200).json({
         conversationId: conversation._id,
         alias: conversation.userA === currentUserCode
             ? conversation.aliasForA
             : conversation.aliasForB,
         sentCount: conversation.userA === currentUserCode 
-            ? (conversation.countAtoB || 0) 
-            : (conversation.countBtoA || 0)
+            ? ((!conversation.lastMessageEpochA || conversation.lastMessageEpochA.getTime() !== todayEpoch) ? 0 : (conversation.countAtoB || 0))
+            : ((!conversation.lastMessageEpochB || conversation.lastMessageEpochB.getTime() !== todayEpoch) ? 0 : (conversation.countBtoA || 0))
     });
 
   } catch (error) {

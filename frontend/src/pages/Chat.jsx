@@ -23,11 +23,11 @@ import toast from "react-hot-toast";function Chat() {
       return;
     }
 
-    // Initialize socket
-    const newSocket = io("http://localhost:5000");
+    // Initialize socket securely with JWT
+    const newSocket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
+      auth: { token: localStorage.getItem("token") }
+    });
     setSocket(newSocket);
-
-    newSocket.emit("register_user", userCode);
 
     return () => {
       newSocket.disconnect();
@@ -38,7 +38,7 @@ import toast from "react-hot-toast";function Chat() {
     const fetchConversations = async () => {
       try {
         const res = await axios.get(
-          `http://localhost:5000/conversations/${userCode}`
+          `/conversations/${userCode}`
         );
         // Safely extract conversations 
         setConversations(res.data.data || res.data.conversations || []);
@@ -58,12 +58,12 @@ import toast from "react-hot-toast";function Chat() {
       const fetchMessages = async () => {
         try {
           const res = await axios.get(
-            `http://localhost:5000/messages/${selectedConv.conversationId || selectedConv._id}`
+            `/messages/${selectedConv.conversationId || selectedConv._id}`
           );
           setMessages(res.data.messages || []);
           
           // mark these messages as read passively
-          await axios.patch(`http://localhost:5000/messages/read/${selectedConv.conversationId || selectedConv._id}`, {
+          await axios.patch(`/messages/read/${selectedConv.conversationId || selectedConv._id}`, {
             currentUserCode: userCode
           });
         } catch (error) {
@@ -90,7 +90,7 @@ import toast from "react-hot-toast";function Chat() {
         });
         
         // Passively mark as read immediately
-        axios.patch(`http://localhost:5000/messages/read/${activeConvId}`, {
+        axios.patch(`/messages/read/${activeConvId}`, {
           currentUserCode: userCode
         }).catch(() => {});
       } else {
@@ -156,7 +156,7 @@ import toast from "react-hot-toast";function Chat() {
     setSearchError("");
 
     try {
-      const res = await axios.post(`http://localhost:5000/users/search/${searchCode.trim()}`, {
+      const res = await axios.post(`/users/search/${searchCode.trim()}`, {
         currentUserCode: userCode
       });
 
@@ -203,7 +203,7 @@ import toast from "react-hot-toast";function Chat() {
     setMessageText("");
 
     try {
-      const res = await axios.post("http://localhost:5000/messages/send", {
+      const res = await axios.post("/messages/send", {
         conversationId: selectedConv.conversationId || selectedConv._id,
         senderUserCode: userCode,
         messageText: textToSend
@@ -257,7 +257,7 @@ import toast from "react-hot-toast";function Chat() {
             if (!val.trim()) { toast.error("Nickname cannot be empty"); return; }
             toast.dismiss(t.id);
             try {
-              await axios.patch(`http://localhost:5000/conversations/${selectedConv.conversationId || selectedConv._id}/nickname`, {
+              await axios.patch(`/conversations/${selectedConv.conversationId || selectedConv._id}/nickname`, {
                 currentUserCode: userCode,
                 nickname: val.trim()
               });
@@ -284,7 +284,7 @@ import toast from "react-hot-toast";function Chat() {
           <button className="text-[12px] bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 px-3 py-2 rounded-lg font-bold w-full transition-colors" onClick={async () => {
             toast.dismiss(t.id);
             try {
-              await axios.post("http://localhost:5000/users/block", {
+              await axios.post("/users/block", {
                 currentUserCode: userCode,
                 targetUserCode: selectedConv.targetUserCode
               });
@@ -303,7 +303,7 @@ import toast from "react-hot-toast";function Chat() {
   const handleUnblockUser = async () => {
     if (!selectedConv?.targetUserCode) { toast.error("Target user code missing. Try refreshing."); return; }
     try {
-      await axios.post("http://localhost:5000/users/unblock", {
+      await axios.post("/users/unblock", {
         currentUserCode: userCode,
         targetUserCode: selectedConv.targetUserCode
       });

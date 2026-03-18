@@ -35,7 +35,7 @@ function Signup() {
     setIsLoading(true);
 
     try {
-      const res = await axios.post("http://localhost:5000/auth/register", {
+      const res = await axios.post("/auth/register", {
         email,
         password
       });

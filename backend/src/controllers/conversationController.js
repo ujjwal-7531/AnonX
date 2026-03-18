@@ -80,14 +80,15 @@ const getUserConversations = async (req, res) => {
       let sentCount = 0;
 
       // determine display name and target user
+      const todayEpoch = new Date().setUTCHours(0,0,0,0);
       if (conv.userA === userCode) {
         displayName = conv.nicknameForA || conv.aliasForA;
         targetUserCode = conv.userB;
-        sentCount = conv.countAtoB || 0;
+        sentCount = (!conv.lastMessageEpochA || conv.lastMessageEpochA.getTime() !== todayEpoch) ? 0 : (conv.countAtoB || 0);
       } else {
         displayName = conv.nicknameForB || conv.aliasForB;
         targetUserCode = conv.userA;
-        sentCount = conv.countBtoA || 0;
+        sentCount = (!conv.lastMessageEpochB || conv.lastMessageEpochB.getTime() !== todayEpoch) ? 0 : (conv.countBtoA || 0);
       }
 
       // count unread messages

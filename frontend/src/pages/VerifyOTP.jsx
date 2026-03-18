@@ -47,7 +47,7 @@ function VerifyOTP() {
 
     try {
         const res = await axios.post(
-          "http://localhost:5000/auth/verify-otp",
+          "/auth/verify-otp",
           { email, otp }
         );
 
@@ -85,7 +85,7 @@ function VerifyOTP() {
     setIsError(false);
 
     try {
-        await axios.post("http://localhost:5000/auth/register", {
+        await axios.post("/auth/register", {
           email,
           password
         });

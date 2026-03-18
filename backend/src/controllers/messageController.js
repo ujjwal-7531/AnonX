@@ -84,16 +84,26 @@ const sendMessage = async (req, res) => {
     }
 
     // message limit check
-    if (senderUserCode === userA && conversation.countAtoB >= 30) {
-      return res.status(403).json({
-        message: "You reached the message limit for this user"
-      });
-    }
+    const todayEpoch = new Date().setUTCHours(0,0,0,0);
 
-    if (senderUserCode === userB && conversation.countBtoA >= 30) {
-      return res.status(403).json({
-        message: "You reached the message limit for this user"
-      });
+    if (senderUserCode === userA) {
+      if (!conversation.lastMessageEpochA || conversation.lastMessageEpochA.getTime() !== todayEpoch) {
+        conversation.countAtoB = 0;
+      }
+      if (conversation.countAtoB >= 30) {
+        return res.status(403).json({
+          message: "You reached the daily message limit for this user"
+        });
+      }
+    } else {
+      if (!conversation.lastMessageEpochB || conversation.lastMessageEpochB.getTime() !== todayEpoch) {
+        conversation.countBtoA = 0;
+      }
+      if (conversation.countBtoA >= 30) {
+        return res.status(403).json({
+          message: "You reached the daily message limit for this user"
+        });
+      }
     }
 
     const message = new Message({
@@ -109,8 +119,10 @@ const sendMessage = async (req, res) => {
     // update counters
     if (senderUserCode === userA) {
       conversation.countAtoB += 1;
+      conversation.lastMessageEpochA = new Date(todayEpoch);
     } else {
       conversation.countBtoA += 1;
+      conversation.lastMessageEpochB = new Date(todayEpoch);
     }
 
     await conversation.save();
