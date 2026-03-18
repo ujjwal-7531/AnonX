@@ -46,7 +46,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-app.use(limiter);
+// app.use(limiter);
 
 app.use("/auth", authLimiter);
 app.use("/auth", authRoutes);
