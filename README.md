@@ -1,33 +1,88 @@
-## Backend Plan
+# 🕵️‍♂️ AnonX — Peer-to-Peer Anonymous Messenger
 
-1. Search user by userCode API (GET /users/search/:userCode)
+## ✨ Core Features
 
-2. Check block status when searching users
+- **🔐 Zero-Identity Authentication**: Sign up using your email and a secure 6-digit OTP verification system.
+- **🛡️ Total Anonymity**: No usernames or real names. Everyone is identified solely by a randomized 6-character **User Code**.
+- **🎭 Dynamic Aliases**: Don't like a user's code? Set a custom local alias (nickname) for your contacts that only you can see.
+- **⚡ Real-time Messaging**: Powered by **Socket.io** for instant, global message delivery with live "Unread" counters.
+- **⏲️ Daily Quotas**: Anti-spam protection with a built-in **30 messages/day** limit per conversation, resetting automatically at UTC midnight.
+- **🚫 Secure Blocking**: Instantly block or unblock users to maintain a safe chatting environment.
+- **📱 Premium UI**: A sleek, dark-mode professional interface built with CSS-modules and **React-Hot-Toast** notifications.
 
-3. Create conversation if it does not exist
+---
 
-4. Generate anonymous aliases (AnonXXXX) for both users
+## 🚀 Tech Stack
 
-5. Fetch existing conversation when opening chat
+- **Frontend**: React.js, Vite, Axios, Lucide React (Icons), React Router.
+- **Backend**: Node.js, Express.js.
+- **Real-time**: Socket.io (with JWT handshake authentication).
+- **Database**: MongoDB (Mongoose ODM).
+- **Security**: JWT tokens, Bcrypt password hashing, Express Rate Limiter, CORS protection.
+- **Email**: Nodemailer (Gmail SMTP integration).
 
-6. Load messages for a conversation (sorted by timestamp)
+---
 
-7. Implement message sending API (respect 30 message limit)
+## 🛠️ Local Setup Instructions
 
-8. Integrate Socket.IO for real-time messaging
+### 1. Prerequisites
+- [Node.js](https://nodejs.org/) installed.
+- [MongoDB](https://www.mongodb.com/) (Local or Atlas) installed.
 
-9. Emit and receive new messages via sockets
+### 2. Clone the Repository
+```bash
+git clone https://github.com/ujjwal-7531/AnonX.git
+cd AnonX
+```
 
-10. Update unread message count
+### 3. Backend Configuration
+Navigate to the `backend/` folder and create a `.env` file:
+```env
+PORT=5000
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_super_secret_key
+EMAIL_USER=your_gmail_address
+EMAIL_PASS=your_gmail_app_password
+CLIENT_URL=http://localhost:5173
+```
 
-11. Mark messages as read when chat is opened
+### 4. Frontend Configuration
+Navigate to the `frontend/` folder and create a `.env` file:
+```env
+VITE_API_URL=http://localhost:5000
+```
 
-12. Implement block user API
+### 5. Run the Application
+In two separate terminals:
 
-13. Prevent messaging/search if blocked
+**Terminal 1 (Backend):**
+```bash
+cd backend
+npm install
+npm run dev
+```
 
-14. Add basic authentication middleware for protected routes
+**Terminal 2 (Frontend):**
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-15. Add input validation and security checks
+---
 
-16. Prepare APIs for frontend integration
+## 🔒 Security Architecture
+
+AnonX is built with a **Trust-No-One** philosophy:
+- **Socket Isolation**: Users are isolated into private global namespaces based on their JWT identity.
+- **Handshaking**: Sockets won't even connect if a valid JWT is missing from the browser's LocalStorage.
+- **Proxy Handling**: Configured with `trust proxy` to prevent IP spoofing during rate-limiting.
+
+---
+
+## 📝 License
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+**Developed with ❤️ for Privacy.**
