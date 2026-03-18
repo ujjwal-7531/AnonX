@@ -102,7 +102,8 @@ const sendMessage = async (req, res) => {
       messageText
     });
 
-    global.io.to(conversationId).emit("receive_message", message);
+    // Target exactly the two users' private encrypted rooms for bulletproof global delivery
+    global.io.to(userA).to(userB).emit("receive_message", message);
     await message.save();
 
     // update counters

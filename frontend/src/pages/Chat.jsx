@@ -54,11 +54,6 @@ import toast from "react-hot-toast";function Chat() {
 
   useEffect(() => {
     if (selectedConv) {
-      // Join room in Socket.io
-      if (socket) {
-        socket.emit("join_conversation", selectedConv.conversationId || selectedConv._id);
-      }
-
       // Fetch message history for selected chat
       const fetchMessages = async () => {
         try {
@@ -67,7 +62,7 @@ import toast from "react-hot-toast";function Chat() {
           );
           setMessages(res.data.messages || []);
           
-          // Also mark these messages as read passively
+          // mark these messages as read passively
           await axios.patch(`http://localhost:5000/messages/read/${selectedConv.conversationId || selectedConv._id}`, {
             currentUserCode: userCode
           });
@@ -77,23 +72,55 @@ import toast from "react-hot-toast";function Chat() {
       };
 
       fetchMessages();
-
-      // Listen dynamically exactly for this focused conversation room
-      const handleReceive = (message) => {
-        // Double check it belongs to the active chat
-        if (message.conversationId === (selectedConv.conversationId || selectedConv._id)) {
-          setMessages(prev => {
-            if (prev.find(m => m._id === message._id)) return prev;
-            return [...prev, message];
-          });
-        }
-      };
-
-      socket.on("receive_message", handleReceive);
-      return () => socket.off("receive_message", handleReceive);
-
     }
-  }, [selectedConv, socket, userCode]);
+  }, [selectedConv, userCode]);
+
+  // Global REAL-TIME message listener 
+  useEffect(() => {
+    if (!socket || !userCode) return;
+    
+    const handleReceive = (message) => {
+      const activeConvId = selectedConv?.conversationId || selectedConv?._id;
+      
+      if (message.conversationId === activeConvId) {
+        // Message belongs to the chat currently open on screen
+        setMessages(prev => {
+          if (prev.find(m => m._id === message._id)) return prev;
+          return [...prev, message];
+        });
+        
+        // Passively mark as read immediately
+        axios.patch(`http://localhost:5000/messages/read/${activeConvId}`, {
+          currentUserCode: userCode
+        }).catch(() => {});
+      } else {
+        // Message belongs to a background chat - inject it into the sidebar unread counter!
+        setConversations(prev => {
+          const exists = prev.find(c => (c.conversationId || c._id) === message.conversationId);
+          if (exists) {
+            return prev.map(c => 
+              (c.conversationId || c._id) === message.conversationId 
+                ? { ...c, unreadCount: (c.unreadCount || 0) + 1 } 
+                : c
+            );
+          } else {
+            // Secretly inject a brand new chat into the sidebar layout
+            const newConv = {
+              _id: message.conversationId,
+              conversationId: message.conversationId,
+              targetUserCode: message.sender,
+              displayName: message.sender,
+              unreadCount: 1,
+            };
+            return [newConv, ...prev];
+          }
+        });
+      }
+    };
+
+    socket.on("receive_message", handleReceive);
+    return () => socket.off("receive_message", handleReceive);
+  }, [socket, selectedConv, userCode]);
 
   // Handle auto-scroll to latest message securely
   useEffect(() => {

@@ -8,11 +8,9 @@ const chatSocket = (io) => {
 
     // register user
     socket.on("register_user", (userCode) => {
-
       users.set(userCode, socket.id);
-
-      console.log(`User ${userCode} registered with socket ${socket.id}`);
-
+      socket.join(userCode); // Make user listen to their persistent unified inbox globally
+      console.log(`User ${userCode} registered and joined private global namespace ${socket.id}`);
     });
 
     // join conversation room
