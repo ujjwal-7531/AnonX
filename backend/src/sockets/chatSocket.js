@@ -1,3 +1,5 @@
+const users = new Map();
+
 const chatSocket = (io) => {
 
   io.on("connection", (socket) => {

@@ -1,5 +1,6 @@
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
+const Block = require("../models/Block");
 
 const updateNickname = async (req, res) => {
   try {
@@ -75,11 +76,18 @@ const getUserConversations = async (req, res) => {
       let displayName;
       let unreadCount = 0;
 
-      // determine display name
+      let targetUserCode;
+      let sentCount = 0;
+
+      // determine display name and target user
       if (conv.userA === userCode) {
         displayName = conv.nicknameForA || conv.aliasForA;
+        targetUserCode = conv.userB;
+        sentCount = conv.countAtoB || 0;
       } else {
         displayName = conv.nicknameForB || conv.aliasForB;
+        targetUserCode = conv.userA;
+        sentCount = conv.countBtoA || 0;
       }
 
       // count unread messages
@@ -89,10 +97,15 @@ const getUserConversations = async (req, res) => {
         isRead: false
       });
 
+      const isBlockedRecord = await Block.findOne({ blocker: userCode, blocked: targetUserCode });
+
       result.push({
         conversationId: conv._id,
         displayName,
-        unreadCount
+        unreadCount,
+        targetUserCode,
+        isBlocked: !!isBlockedRecord,
+        sentCount
       });
     }
 

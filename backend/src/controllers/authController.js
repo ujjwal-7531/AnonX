@@ -6,6 +6,7 @@ const generateOTP = require("../utils/generateOTP");
 const validateEmail = require("../utils/validateEmail");
 const sendOTPEmail = require("../utils/sendOTPEmail");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 
 // register user
@@ -145,9 +146,17 @@ const verifyOTP = async (req, res) => {
     await OTP.deleteMany({ email });
 
     console.log(`Email ${email} verified successfully`);
+
+    const token = jwt.sign(
+      { userCode }, 
+      process.env.JWT_SECRET || "anonx_super_secret", 
+      { expiresIn: '7d' }
+    );
+
     res.status(201).json({
       message: "Email verified and account created",
-      userCode
+      userCode,
+      token
     });
 
   } catch (error) {
@@ -230,9 +239,16 @@ const loginUser = async (req, res) => {
 
     console.log(`Login successful for ${email}`);
 
+    const token = jwt.sign(
+      { userCode: user.userCode }, 
+      process.env.JWT_SECRET || "anonx_super_secret", 
+      { expiresIn: '7d' }
+    );
+
     res.status(200).json({
       message: "Login successful",
-      userCode: user.userCode
+      userCode: user.userCode,
+      token
     });
 
   } catch (error) {

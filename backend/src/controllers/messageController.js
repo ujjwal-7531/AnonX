@@ -1,5 +1,6 @@
 const Message = require("../models/Message");
 const Conversation = require("../models/Conversation");
+const Block = require("../models/Block");
 
 const getMessages = async (req, res) => {
   try {

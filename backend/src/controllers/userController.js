@@ -84,7 +84,10 @@ const searchUser = async (req, res) => {
         conversationId: conversation._id,
         alias: conversation.userA === currentUserCode
             ? conversation.aliasForA
-            : conversation.aliasForB
+            : conversation.aliasForB,
+        sentCount: conversation.userA === currentUserCode 
+            ? (conversation.countAtoB || 0) 
+            : (conversation.countBtoA || 0)
     });
 
   } catch (error) {

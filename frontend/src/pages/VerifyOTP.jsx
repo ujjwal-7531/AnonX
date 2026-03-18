@@ -47,11 +47,12 @@ function VerifyOTP() {
 
     try {
         const res = await axios.post(
-          "http://localhost:5000/auth/verify-otp",
+          "http://localhost:5000/auth/verify",
           { email, otp }
         );
 
         localStorage.setItem("userCode", res.data.userCode);
+        localStorage.setItem("token", res.data.token);
         setMessage("Identity Verified! Entering...");
         setIsError(false);
         setTimeout(() => navigate("/chat"), 1500); 

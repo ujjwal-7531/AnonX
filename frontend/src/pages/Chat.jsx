@@ -12,6 +12,7 @@ function Chat() {
   const [searchError, setSearchError] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [socket, setSocket] = useState(null);
+  const [showMenu, setShowMenu] = useState(false);
 
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
@@ -29,18 +30,7 @@ function Chat() {
 
     newSocket.emit("register_user", userCode);
 
-    newSocket.on("receive_message", (message) => {
-      // Functional state update ensures we don't have stale closures on messages list
-      setMessages((prev) => {
-          // Add if not already there to prevent duplication issues, 
-          // but checking by _id is safest:
-          if (prev.find(m => m._id === message._id)) return prev;
-          return [...prev, message];
-      });
-    });
-
     return () => {
-      newSocket.off("receive_message");
       newSocket.disconnect();
     };
   }, [userCode, navigate]);
@@ -88,6 +78,21 @@ function Chat() {
       };
 
       fetchMessages();
+
+      // Listen dynamically exactly for this focused conversation room
+      const handleReceive = (message) => {
+        // Double check it belongs to the active chat
+        if (message.conversationId === (selectedConv.conversationId || selectedConv._id)) {
+          setMessages(prev => {
+            if (prev.find(m => m._id === message._id)) return prev;
+            return [...prev, message];
+          });
+        }
+      };
+
+      socket.on("receive_message", handleReceive);
+      return () => socket.off("receive_message", handleReceive);
+
     }
   }, [selectedConv, socket, userCode]);
 
@@ -99,25 +104,40 @@ function Chat() {
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchCode.trim()) return;
+
+    if (searchCode.trim() === userCode) {
+      setSearchError("You cannot search your own ID.");
+      return;
+    }
+
+    // Check if chat already exists locally
+    const existingChat = conversations.find(c => c.targetUserCode === searchCode.trim());
+    if (existingChat) {
+      alert("Chat already exists!");
+      setSelectedConv(existingChat);
+      setSearchCode("");
+      return;
+    }
     
     setIsSearching(true);
     setSearchError("");
 
     try {
-      const res = await axios.get(`http://localhost:5000/users/search/${searchCode.trim()}`, {
-        // Axios config for payload in GET requests
-        data: { currentUserCode: userCode }
+      const res = await axios.post(`http://localhost:5000/users/search/${searchCode.trim()}`, {
+        currentUserCode: userCode
       });
 
-      // API returns conversationId, alias
-      const { conversationId, alias } = res.data;
+      // API returns conversationId, alias, sentCount
+      const { conversationId, alias, sentCount } = res.data;
       
       const newConv = {
         conversationId,
         _id: conversationId,
         displayName: alias || "New Chat",
         aliasForA: alias,
-        aliasForB: alias
+        aliasForB: alias,
+        targetUserCode: searchCode.trim(),
+        sentCount: sentCount || 0
       };
 
       // Append it locally on left sidebar dynamically
@@ -150,14 +170,92 @@ function Chat() {
     setMessageText("");
 
     try {
-      await axios.post("http://localhost:5000/messages/send", {
+      const res = await axios.post("http://localhost:5000/messages/send", {
         conversationId: selectedConv.conversationId || selectedConv._id,
         senderUserCode: userCode,
         messageText: textToSend
       });
-      // (Message broadcast runs via "receive_message" WebSocket event automatically natively for us)
+      // Append manually for incredibly fast rendering as the sender
+      const savedMessage = res.data.data;
+      setMessages(prev => {
+        if (prev.find(m => m._id === savedMessage._id)) return prev;
+        return [...prev, savedMessage];
+      });
+      // Deduct message quota locally
+      setConversations(prev => prev.map(c => 
+        (c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id) 
+        ? { ...c, sentCount: (c.sentCount || 0) + 1 } 
+        : c
+      ));
+      setSelectedConv(prev => ({ ...prev, sentCount: (prev.sentCount || 0) + 1 }));
     } catch (error) {
-      console.error("Error sending message:", error);
+      setMessageText(textToSend); // Restore text so they don't lose it
+      alert(error.response?.data?.message || "Error sending message");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("userCode");
+    if (socket) socket.disconnect();
+    navigate("/login");
+  };
+
+  const handleSetAlias = async () => {
+    const newAlias = prompt("Enter new nickname for this user:");
+    if (!newAlias?.trim() || !selectedConv) return;
+    try {
+      await axios.patch(`http://localhost:5000/conversations/${selectedConv.conversationId || selectedConv._id}/nickname`, {
+        currentUserCode: userCode,
+        nickname: newAlias.trim()
+      });
+      setConversations(prev => prev.map(c => {
+        if ((c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id)) {
+          return { ...c, displayName: newAlias.trim() };
+        }
+        return c;
+      }));
+      setSelectedConv(prev => ({ ...prev, displayName: newAlias.trim() }));
+    } catch (error) {
+      alert("Failed to update alias");
+    }
+  };
+
+  const handleBlockUser = async () => {
+    if (!selectedConv?.targetUserCode) return alert("Target user code missing. Try refreshing.");
+    if (confirm("Are you sure you want to block this user?")) {
+      try {
+        await axios.post("http://localhost:5000/users/block", {
+          currentUserCode: userCode,
+          targetUserCode: selectedConv.targetUserCode
+        });
+        alert("User blocked successfully");
+        // Update local state dynamically
+        setConversations(prev => prev.map(c => 
+          (c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id) ? {...c, isBlocked: true} : c
+        ));
+        setSelectedConv(prev => ({...prev, isBlocked: true}));
+      } catch (error) {
+        alert(error.response?.data?.message || "Failed to block user");
+      }
+    }
+  };
+
+  const handleUnblockUser = async () => {
+    if (!selectedConv?.targetUserCode) return alert("Target user code missing. Try refreshing.");
+    try {
+      await axios.post("http://localhost:5000/users/unblock", {
+        currentUserCode: userCode,
+        targetUserCode: selectedConv.targetUserCode
+      });
+      alert("User unblocked successfully");
+      // Update local state dynamically
+      setConversations(prev => prev.map(c => 
+        (c.conversationId || c._id) === (selectedConv.conversationId || selectedConv._id) ? {...c, isBlocked: false} : c
+      ));
+      setSelectedConv(prev => ({...prev, isBlocked: false}));
+    } catch (error) {
+      alert(error.response?.data?.message || "Failed to unblock user");
     }
   };
 
@@ -168,9 +266,17 @@ function Chat() {
       <div className="w-80 lg:w-96 flex flex-col border-r border-neutral-800/50 bg-neutral-900/40 backdrop-blur-md">
         
         {/* Profile Branding */}
-        <div className="p-5 border-b border-neutral-800/50 flex items-center justify-between">
-          <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">AnonX Chat</h2>
-          <span className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded-md font-mono border border-neutral-700 shadow-sm">Code: {userCode}</span>
+        <div className="p-5 border-b border-neutral-800/50 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">AnonX Chat</h2>
+            <button 
+              onClick={handleLogout}
+              className="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded-md font-medium border border-red-500/20 shadow-sm transition-colors"
+            >
+              Logout
+            </button>
+          </div>
+          <span className="text-xs bg-neutral-800 text-neutral-300 px-3 py-1.5 rounded-md font-mono border border-neutral-700 shadow-sm w-fit">Code: {userCode}</span>
         </div>
 
         {/* Global Search Interface */}
@@ -246,13 +352,42 @@ function Chat() {
         ) : (
           <>
             {/* Header Identity Plate */}
-            <div className="h-[73px] flex items-center px-6 bg-neutral-900/60 backdrop-blur-md border-b border-neutral-800/50 shrink-0 shadow-sm z-10">
+            <div className="h-[73px] flex items-center px-6 bg-neutral-900/60 backdrop-blur-md border-b border-neutral-800/50 shrink-0 shadow-sm z-10 w-full relative">
                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold opacity-90 shadow-md shadow-indigo-500/20 mr-4 border border-indigo-400/20">
                  {(selectedConv.aliasForA || selectedConv.displayName || '?').charAt(0).toUpperCase()}
                </div>
                <div className="flex flex-col">
                   <span className="font-bold text-white tracking-wide text-[15px]">{selectedConv.aliasForA || selectedConv.displayName}</span>
-                  <span className="text-[11px] text-indigo-400 font-medium">Session Initialized</span>
+                  <span className="text-[11px] text-indigo-400 font-medium">
+                    {Math.max(0, 30 - (selectedConv.sentCount || 0))} / 30 messages remaining today
+                  </span>
+               </div>
+               
+               {/* Context Menu Dropdown */}
+               <div className="ml-auto relative">
+                 <button 
+                    onClick={() => setShowMenu(!showMenu)} 
+                    className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+                 >
+                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                     <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+                   </svg>
+                 </button>
+                 
+                 {showMenu && (
+                   <>
+                     {/* Invisible full-screen overlay to close menu on outside click */}
+                     <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div>
+                     <div className="absolute top-12 right-0 bg-neutral-800 border border-neutral-700 rounded-xl text-sm w-44 overflow-hidden shadow-xl z-50 animate-fade-in divide-y divide-neutral-700/50">
+                       <button onClick={() => { handleSetAlias(); setShowMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-neutral-700 text-white font-medium transition-colors">Set Alias</button>
+                       {selectedConv?.isBlocked ? (
+                         <button onClick={() => { handleUnblockUser(); setShowMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-neutral-700 text-emerald-400 font-medium transition-colors">Unblock User</button>
+                       ) : (
+                         <button onClick={() => { handleBlockUser(); setShowMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-neutral-700 text-red-400 font-medium transition-colors">Block User</button>
+                       )}
+                     </div>
+                   </>
+                 )}
                </div>
             </div>
 
@@ -263,10 +398,14 @@ function Chat() {
                 </div>
                 {messages.map((msg, index) => {
                   const isMine = msg.sender === userCode;
+                  const timeString = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                   return (
                     <div key={msg._id || index} className={`flex w-full ${isMine ? 'justify-end' : 'justify-start'}`}>
-                       <div className={`max-w-[70%] px-4 py-3 rounded-2xl ${isMine ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-tr-[2px] shadow-md shadow-indigo-500/10 border border-indigo-400/20' : 'bg-neutral-800 border border-neutral-700/80 text-neutral-100 rounded-tl-[2px] shadow-sm'}`}>
-                          <p className="text-[14px] leading-[1.6] whitespace-pre-wrap">{msg.messageText}</p>
+                       <div className={`flex flex-col max-w-[75%] ${isMine ? 'items-end' : 'items-start'}`}>
+                         <div className={`px-4 py-2.5 rounded-2xl ${isMine ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-tr-[2px] shadow-md shadow-indigo-500/10 border border-indigo-400/20' : 'bg-neutral-800 border border-neutral-700/80 text-neutral-100 rounded-tl-[2px] shadow-sm'}`}>
+                            <p className="text-[14px] leading-[1.6] whitespace-pre-wrap">{msg.messageText}</p>
+                         </div>
+                         <span className="text-[10px] text-neutral-500 mt-1.5 mx-1.5 font-medium tracking-wide">{timeString}</span>
                        </div>
                     </div>
                   );
@@ -274,27 +413,27 @@ function Chat() {
                 <div ref={messagesEndRef} className="pb-2" />
             </div>
 
-            {/* Typographic Entry Bar */}
-            <div className="p-4 bg-neutral-900/60 backdrop-blur-xl border-t border-neutral-800/50">
-               <form onSubmit={handleSendMessage} className="flex gap-3 items-end max-w-5xl mx-auto w-full relative">
-                  <textarea
-                    rows={1}
+            {/* Input Area */}
+            <div className="p-4 bg-neutral-900 border-t border-neutral-800 shrink-0 relative z-10 shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.3)]">
+              <form onSubmit={handleSendMessage} className="flex gap-3 max-w-5xl mx-auto w-full relative items-center">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage(e);
-                      }
-                    }}
-                    placeholder="Message anonymously..."
-                    className="flex-1 bg-neutral-800/80 border border-neutral-700/50 text-white p-3.5 pr-4 rounded-xl focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500 resize-none max-h-32 placeholder-neutral-500 shadow-inner text-[15px]"
+                    placeholder="Type an anonymous message..."
+                    className="w-full bg-neutral-950 border border-neutral-800 text-white text-[15px] rounded-xl pl-5 pr-16 py-3 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 shadow-inner placeholder-neutral-600 transition-all"
+                    maxLength={250}
                   />
-                  <button
-                    type="submit"
-                    disabled={!messageText.trim()}
-                    className="shrink-0 w-12 h-12 bg-indigo-500 text-white rounded-full flex items-center justify-center hover:bg-indigo-400 active:scale-95 disabled:opacity-40 disabled:bg-neutral-700 transition-all font-bold shadow-lg shadow-indigo-500/25 border border-indigo-400/20"
-                  >
+                  <span className={`absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-medium tracking-wide ${messageText.length >= 240 ? 'text-red-400' : 'text-neutral-500'}`}>
+                    {messageText.length}/250
+                  </span>
+                </div>
+                <button 
+                  type="submit" 
+                  disabled={!messageText.trim() || selectedConv?.isBlocked}
+                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md shadow-indigo-600/20 active:scale-[0.98] flex items-center gap-2"
+                >
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" className="transform translate-x-[1px] -translate-y-[1px]">
                       <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/>
                     </svg>

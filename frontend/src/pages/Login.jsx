@@ -33,8 +33,9 @@ function Login() {
         password 
       });
 
-      if (res.data.userCode) {
+      if (res.data.userCode && res.data.token) {
         localStorage.setItem("userCode", res.data.userCode);
+        localStorage.setItem("token", res.data.token);
         setMessage("Success! Redirecting...");
         setTimeout(() => navigate("/chat"), 1000); // Send to chat
       }
