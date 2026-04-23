@@ -1,16 +1,24 @@
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const Block = require("../models/Block");
+const getISTDayEpoch = require("../utils/getISTDayEpoch");
 
 const updateNickname = async (req, res) => {
   try {
 
     const { conversationId } = req.params;
-    const { currentUserCode, nickname } = req.body;
+    const { nickname } = req.body;
+    const currentUserCode = req.user?.userCode;
 
     if (!nickname) {
       return res.status(400).json({
         message: "Nickname is required"
+      });
+    }
+
+    if (!currentUserCode) {
+      return res.status(401).json({
+        message: "Unauthorized"
       });
     }
 
@@ -54,18 +62,25 @@ const getUserConversations = async (req, res) => {
   try {
 
     const { userCode } = req.params;
+    const currentUserCode = req.user?.userCode;
 
-    if (!userCode) {
+    if (!userCode || !currentUserCode) {
       return res.status(400).json({
         message: "User code is required"
+      });
+    }
+
+    if (userCode !== currentUserCode) {
+      return res.status(403).json({
+        message: "You can only view your own conversations"
       });
     }
 
     // find all conversations of user
     const conversations = await Conversation.find({
       $or: [
-        { userA: userCode },
-        { userB: userCode }
+        { userA: currentUserCode },
+        { userB: currentUserCode }
       ]
     });
 
@@ -80,8 +95,8 @@ const getUserConversations = async (req, res) => {
       let sentCount = 0;
 
       // determine display name and target user
-      const todayEpoch = new Date().setUTCHours(0,0,0,0);
-      if (conv.userA === userCode) {
+      const todayEpoch = getISTDayEpoch();
+      if (conv.userA === currentUserCode) {
         displayName = conv.nicknameForA || conv.aliasForA;
         targetUserCode = conv.userB;
         sentCount = (!conv.lastMessageEpochA || conv.lastMessageEpochA.getTime() !== todayEpoch) ? 0 : (conv.countAtoB || 0);
@@ -94,7 +109,7 @@ const getUserConversations = async (req, res) => {
       // count unread messages
       unreadCount = await Message.countDocuments({
         conversationId: conv._id,
-        sender: { $ne: userCode },
+        sender: { $ne: currentUserCode },
         isRead: false
       });
 

@@ -13,23 +13,9 @@ function VerifyOTP() {
   const navigate = useNavigate();
 
   const email = location.state?.email;
-  const password = location.state?.password; 
 
-  if (!email || !password) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-neutral-950 text-white">
-        <p className="mb-4 text-neutral-400">No data found. Please try again.</p>
-        <button
-          onClick={() => navigate("/signup")}
-          className="text-indigo-400 hover:text-indigo-300 transition-colors font-medium border-b border-transparent hover:border-indigo-400"
-        >
-          Go back to Signup
-        </button>
-      </div>
-    );
-  }
-
-  const handleVerify = async () => {
+  const handleVerify = async (e) => {
+    e.preventDefault();
     setMessage("");
     setIsError(false);
 
@@ -78,6 +64,20 @@ function VerifyOTP() {
     return () => clearInterval(interval);
   }, [canResend]);
 
+  if (!email) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-neutral-950 text-white">
+        <p className="mb-4 text-neutral-400">No data found. Please try again.</p>
+        <button
+          onClick={() => navigate("/signup")}
+          className="text-indigo-400 hover:text-indigo-300 transition-colors font-medium border-b border-transparent hover:border-indigo-400"
+        >
+          Go back to Signup
+        </button>
+      </div>
+    );
+  }
+
   const handleResendOTP = async () => {
     setCanResend(false);
     setTimer(60);
@@ -85,10 +85,7 @@ function VerifyOTP() {
     setIsError(false);
 
     try {
-        await axios.post("/auth/register", {
-          email,
-          password
-        });
+        await axios.post("/auth/resend-otp", { email });
         setMessage("OTP resent successfully!");
     } catch (error) {
         setIsError(true);
@@ -113,6 +110,7 @@ function VerifyOTP() {
           Code sent to: <span className="text-neutral-200">{email}</span>
         </p>
 
+        <form onSubmit={handleVerify}>
         <div className="mb-6">
           <input
             type="text"
@@ -133,11 +131,12 @@ function VerifyOTP() {
         </div>
 
         <button
-          onClick={handleVerify}
+          type="submit"
           className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-3 rounded-lg shadow-lg hover:shadow-indigo-500/25 hover:from-indigo-400 hover:to-purple-500 active:scale-[0.98] transition-all duration-200 font-medium mb-4"
         >
           Verify & Enter
         </button>
+        </form>
 
         {message && (
           <p className={`text-sm text-center font-medium mb-3 ${isError ? "text-red-400" : "text-emerald-400"}`}>

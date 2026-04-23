@@ -23,7 +23,8 @@ function Login() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleLogin = async () => {
+  const handleLogin = async (e) => {
+    e.preventDefault();
     setMessage(""); // Clear previous overall messages
     if (!validate()) return;
 
@@ -54,6 +55,7 @@ function Login() {
       <div className="relative bg-neutral-900/80 backdrop-blur-xl p-8 rounded-2xl border border-neutral-800/50 shadow-2xl w-full max-w-[360px] z-10 transition-all duration-300">
         <h1 className="text-2xl font-bold mb-6 text-center text-white tracking-tight">Welcome Back</h1>
 
+        <form onSubmit={handleLogin}>
         <div className="mb-4">
           <input
             type="email"
@@ -83,11 +85,12 @@ function Login() {
         </div>
 
         <button
-          onClick={handleLogin}
+          type="submit"
           className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-3 rounded-lg shadow-lg hover:shadow-indigo-500/25 hover:from-indigo-400 hover:to-purple-500 active:scale-[0.98] transition-all duration-200 font-medium"
         >
           Login
         </button>
+        </form>
 
         {message && (
           <p className={`mt-4 text-sm text-center font-medium ${message.includes("Success") ? "text-emerald-400" : "text-red-400"}`}>

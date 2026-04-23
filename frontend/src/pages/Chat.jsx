@@ -63,9 +63,7 @@ import toast from "react-hot-toast";function Chat() {
           setMessages(res.data.messages || []);
           
           // mark these messages as read passively
-          await axios.patch(`/messages/read/${selectedConv.conversationId || selectedConv._id}`, {
-            currentUserCode: userCode
-          });
+          await axios.patch(`/messages/read/${selectedConv.conversationId || selectedConv._id}`);
         } catch (error) {
           console.error("Error fetching messages:", error);
         }
@@ -90,9 +88,7 @@ import toast from "react-hot-toast";function Chat() {
         });
         
         // Passively mark as read immediately
-        axios.patch(`/messages/read/${activeConvId}`, {
-          currentUserCode: userCode
-        }).catch(() => {});
+        axios.patch(`/messages/read/${activeConvId}`).catch(() => {});
       } else {
         // Message belongs to a background chat - inject it into the sidebar unread counter!
         setConversations(prev => {
@@ -127,9 +123,16 @@ import toast from "react-hot-toast";function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    if (!searchError) return;
+    const timeoutId = setTimeout(() => setSearchError(""), 3000);
+    return () => clearTimeout(timeoutId);
+  }, [searchError]);
+
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchCode.trim()) return;
+    setSearchError("");
 
     if (searchCode.trim() === userCode) {
       setSearchError("You cannot search your own ID.");
@@ -149,6 +152,7 @@ import toast from "react-hot-toast";function Chat() {
       });
       setSelectedConv(existingChat);
       setSearchCode("");
+      setSearchError("");
       return;
     }
     
@@ -156,9 +160,7 @@ import toast from "react-hot-toast";function Chat() {
     setSearchError("");
 
     try {
-      const res = await axios.post(`/users/search/${searchCode.trim()}`, {
-        currentUserCode: userCode
-      });
+      const res = await axios.post(`/users/search/${searchCode.trim()}`);
 
       // API returns conversationId, alias, sentCount
       const { conversationId, alias, sentCount } = res.data;
@@ -205,7 +207,6 @@ import toast from "react-hot-toast";function Chat() {
     try {
       const res = await axios.post("/messages/send", {
         conversationId: selectedConv.conversationId || selectedConv._id,
-        senderUserCode: userCode,
         messageText: textToSend
       });
       // Append manually for incredibly fast rendering as the sender
@@ -258,7 +259,6 @@ import toast from "react-hot-toast";function Chat() {
             toast.dismiss(t.id);
             try {
               await axios.patch(`/conversations/${selectedConv.conversationId || selectedConv._id}/nickname`, {
-                currentUserCode: userCode,
                 nickname: val.trim()
               });
               setConversations(prev => prev.map(c => 
@@ -266,7 +266,7 @@ import toast from "react-hot-toast";function Chat() {
               ));
               setSelectedConv(prev => ({ ...prev, displayName: val.trim() }));
               toast.success("Alias updated");
-            } catch (error) { toast.error("Failed to update alias"); }
+            } catch { toast.error("Failed to update alias"); }
         }}>Save Alias</button>
       </div>
     ), { duration: Infinity });
@@ -285,7 +285,6 @@ import toast from "react-hot-toast";function Chat() {
             toast.dismiss(t.id);
             try {
               await axios.post("/users/block", {
-                currentUserCode: userCode,
                 targetUserCode: selectedConv.targetUserCode
               });
               toast.success("User blocked successfully");
@@ -304,7 +303,6 @@ import toast from "react-hot-toast";function Chat() {
     if (!selectedConv?.targetUserCode) { toast.error("Target user code missing. Try refreshing."); return; }
     try {
       await axios.post("/users/unblock", {
-        currentUserCode: userCode,
         targetUserCode: selectedConv.targetUserCode
       });
       toast.success("User unblocked successfully");
@@ -318,6 +316,52 @@ import toast from "react-hot-toast";function Chat() {
     }
   };
 
+  const handleDeleteAccount = () => {
+    toast((t) => (
+      <div className="flex flex-col gap-3 w-64 relative">
+        <span className="font-bold text-[14px] text-red-400 tracking-wide">Delete Account</span>
+        <p className="text-[11px] text-neutral-400 leading-5">
+          This will permanently delete your account, conversations, aliases and messages.
+        </p>
+        <button onClick={() => toast.dismiss(t.id)} className="absolute -top-1 -right-1 text-neutral-500 hover:text-white text-lg">&times;</button>
+        <input
+          id="delete-account-password-input"
+          type="password"
+          className="bg-neutral-900 border border-neutral-700/50 p-2.5 text-white rounded-lg text-[13px] outline-none focus:border-red-500/50 shadow-inner"
+          placeholder="Enter password to confirm"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") document.getElementById("confirm-delete-account-btn").click();
+          }}
+        />
+        <button
+          id="confirm-delete-account-btn"
+          className="text-xs bg-red-600 hover:bg-red-500 px-3 py-2.5 rounded-lg text-white font-bold transition-all shadow-md mt-1"
+          onClick={async () => {
+            const password = document.getElementById("delete-account-password-input").value;
+            if (!password?.trim()) {
+              toast.error("Password is required");
+              return;
+            }
+            try {
+              await axios.delete("/users/me", { data: { password: password.trim() } });
+              toast.dismiss(t.id);
+              toast.success("Account deleted successfully");
+              localStorage.removeItem("token");
+              localStorage.removeItem("userCode");
+              if (socket) socket.disconnect();
+              navigate("/login");
+            } catch (error) {
+              toast.error(error.response?.data?.message || "Failed to delete account");
+            }
+          }}
+        >
+          Permanently Delete
+        </button>
+      </div>
+    ), { duration: Infinity });
+  };
+
   return (
     <div className="h-screen flex bg-neutral-950 text-white overflow-hidden">
       
@@ -328,14 +372,8 @@ import toast from "react-hot-toast";function Chat() {
         <div className="p-5 border-b border-neutral-800/50 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">AnonX Chat</h2>
-            <button 
-              onClick={handleLogout}
-              className="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded-md font-medium border border-red-500/20 shadow-sm transition-colors"
-            >
-              Logout
-            </button>
+            <span className="text-xs bg-neutral-800 text-neutral-300 px-3 py-1.5 rounded-md font-mono border border-neutral-700 shadow-sm">Code: {userCode}</span>
           </div>
-          <span className="text-xs bg-neutral-800 text-neutral-300 px-3 py-1.5 rounded-md font-mono border border-neutral-700 shadow-sm w-fit">Code: {userCode}</span>
         </div>
 
         {/* Global Search Interface */}
@@ -347,7 +385,10 @@ import toast from "react-hot-toast";function Chat() {
                 placeholder="Find unique user ID..."
                 className="w-full bg-neutral-800 text-white text-sm border border-neutral-700/50 rounded-lg p-2.5 pl-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-neutral-500 shadow-inner"
                 value={searchCode}
-                onChange={(e) => setSearchCode(e.target.value.replace(/[^0-9a-zA-Z-]/g, ''))}
+                onChange={(e) => {
+                  setSearchCode(e.target.value.replace(/[^0-9a-zA-Z-]/g, ''));
+                  if (searchError) setSearchError("");
+                }}
               />
               <button 
                 type="submit" 
@@ -381,7 +422,10 @@ import toast from "react-hot-toast";function Chat() {
               return (
                  <div
                     key={conv.conversationId || conv._id}
-                    onClick={() => setSelectedConv(conv)}
+                    onClick={() => {
+                      setSelectedConv(conv);
+                      setSearchError("");
+                    }}
                     className={`p-3.5 rounded-xl cursor-pointer transition-all duration-200 border border-transparent flex justify-between items-center ${isActive ? 'bg-indigo-500/10 border-indigo-500/30 shadow-sm shadow-indigo-500/5' : 'hover:bg-neutral-800/80 hover:border-neutral-700/50'}`}
                   >
                     <div className="flex flex-col">
@@ -398,6 +442,21 @@ import toast from "react-hot-toast";function Chat() {
               );
             })
           )}
+        </div>
+
+        <div className="p-3 border-t border-neutral-800/50 bg-neutral-900/30 flex flex-col gap-2">
+          <button
+            onClick={handleLogout}
+            className="w-full px-3 py-2.5 rounded-lg border border-neutral-700 bg-neutral-800/70 text-neutral-200 hover:bg-neutral-700 font-semibold text-sm transition-colors flex items-center justify-center"
+          >
+            Logout
+          </button>
+          <button
+            onClick={handleDeleteAccount}
+            className="w-full px-3 py-2.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 font-semibold text-sm transition-colors flex items-center justify-center"
+          >
+            Delete Account
+          </button>
         </div>
       </div>
 
@@ -417,9 +476,6 @@ import toast from "react-hot-toast";function Chat() {
                </div>
                <div className="flex flex-col">
                   <span className="font-bold text-white tracking-wide text-[15px]">{selectedConv.aliasForA || selectedConv.displayName}</span>
-                  <span className="text-[11px] text-indigo-400 font-medium">
-                    {Math.max(0, 30 - (selectedConv.sentCount || 0))} / 30 messages remaining today
-                  </span>
                </div>
                
                {/* Context Menu Dropdown */}
@@ -497,6 +553,9 @@ import toast from "react-hot-toast";function Chat() {
                       <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/>
                     </svg>
                   </button>
+                  <span className="text-[11px] text-indigo-400 font-medium whitespace-nowrap">
+                    {Math.max(0, 30 - (selectedConv.sentCount || 0))}/30 left
+                  </span>
                </form>
             </div>
           </>

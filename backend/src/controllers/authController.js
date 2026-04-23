@@ -8,6 +8,32 @@ const sendOTPEmail = require("../utils/sendOTPEmail");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
+const OTP_EXPIRY_MINUTES = 5;
+const OTP_COOLDOWN_SECONDS = 60;
+const OTP_MAX_ATTEMPTS = 5;
+
+const getRemainingCooldownSeconds = (otpRecord) => {
+  if (!otpRecord?.createdAt) return 0;
+  const elapsedSeconds = Math.floor((Date.now() - new Date(otpRecord.createdAt).getTime()) / 1000);
+  return Math.max(0, OTP_COOLDOWN_SECONDS - elapsedSeconds);
+};
+
+const createAndSendOTP = async ({ email, passwordHash }) => {
+  const otp = generateOTP();
+  const hashedOtp = await bcrypt.hash(otp, 10);
+  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+  await OTP.deleteMany({ email });
+  await OTP.create({
+    email,
+    otp: hashedOtp,
+    password: passwordHash,
+    expiresAt,
+    attempts: 0
+  });
+  await sendOTPEmail(email, otp);
+};
+
 
 // register user
 const registerUser = async (req, res) => {
@@ -16,8 +42,6 @@ const registerUser = async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     email = email.trim().toLowerCase();
 
     if (!validateEmail(email)) {
@@ -30,29 +54,17 @@ const registerUser = async (req, res) => {
       return res.status(409).json({ message: "Email already registered" });
     }
 
-    // check if OTP already sent recently (1 minute cooldown hack)
     const existingOTP = await OTP.findOne({ email });
+    const remainingCooldown = getRemainingCooldownSeconds(existingOTP);
 
-    if (existingOTP && (existingOTP.expiresAt.getTime() - Date.now() > 4 * 60 * 1000)) {
+    if (remainingCooldown > 0) {
       return res.status(429).json({
-        message: "OTP already sent. Please wait 1 minute before requesting another."
+        message: `OTP already sent. Please wait ${remainingCooldown} seconds before requesting another.`
       });
     }
 
-    // delete old OTPs
-    await OTP.deleteMany({ email });
-
-    const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-    await OTP.create({
-      email,
-      otp,
-      password: hashedPassword,
-      expiresAt,
-      attempts: 0
-    });
-    await sendOTPEmail(email, otp);
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await createAndSendOTP({ email, passwordHash: hashedPassword });
 
     console.log(`OTP sent successfully to ${email}`);
 
@@ -107,7 +119,7 @@ const verifyOTP = async (req, res) => {
     }
 
     // attempt limit check
-    if (otpRecord.attempts >= 5) {
+    if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
       await OTP.deleteMany({ email });
 
       return res.status(429).json({
@@ -116,7 +128,8 @@ const verifyOTP = async (req, res) => {
     }
 
     // wrong OTP
-    if (String(otpRecord.otp.toString()).trim() !== otp.toString().trim()) {
+    const isValidOTP = await bcrypt.compare(otp.toString().trim(), otpRecord.otp);
+    if (!isValidOTP) {
       otpRecord.attempts += 1;
       await otpRecord.save();
 
@@ -147,9 +160,13 @@ const verifyOTP = async (req, res) => {
 
     console.log(`Email ${email} verified successfully`);
 
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: "Server auth misconfiguration" });
+    }
+
     const token = jwt.sign(
-      { userCode }, 
-      process.env.JWT_SECRET || "anonx_super_secret", 
+      { userCode },
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -163,8 +180,65 @@ const verifyOTP = async (req, res) => {
     console.error(error);
 
     res.status(500).json({
-      message: "Server error",
-      error: error
+      message: "Server error"
+    });
+  }
+};
+
+const resendOTP = async (req, res) => {
+  try {
+    let { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        message: "Email is required"
+      });
+    }
+
+    email = email.trim().toLowerCase();
+    if (!validateEmail(email)) {
+      return res.status(400).json({
+        message: "Invalid email format"
+      });
+    }
+
+    const user = await User.findOne({ email });
+    if (user?.isVerified) {
+      return res.status(409).json({
+        message: "Email already verified. Please login."
+      });
+    }
+
+    const existingOTP = await OTP.findOne({ email });
+    if (!existingOTP) {
+      return res.status(400).json({
+        message: "OTP session not found. Please sign up again."
+      });
+    }
+
+    const remainingCooldown = getRemainingCooldownSeconds(existingOTP);
+    if (remainingCooldown > 0) {
+      return res.status(429).json({
+        message: `OTP already sent. Please wait ${remainingCooldown} seconds before requesting another.`
+      });
+    }
+
+    const passwordHash = existingOTP.password || user?.password;
+    if (!passwordHash) {
+      return res.status(400).json({
+        message: "OTP session not found. Please sign up again."
+      });
+    }
+
+    await createAndSendOTP({ email, passwordHash });
+
+    return res.status(200).json({
+      message: "OTP resent successfully"
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Server error while resending OTP"
     });
   }
 };
@@ -201,27 +275,15 @@ const loginUser = async (req, res) => {
     if (!user.isVerified) {
 
       const existingOTP = await OTP.findOne({ email });
+      const remainingCooldown = getRemainingCooldownSeconds(existingOTP);
 
-      if (existingOTP && existingOTP.expiresAt > new Date()) {
+      if (remainingCooldown > 0) {
         return res.status(429).json({
-          message: "OTP already sent. Please wait before requesting another."
+          message: `OTP already sent. Please wait ${remainingCooldown} seconds before requesting another.`
         });
       }
 
-      await OTP.deleteMany({ email });
-
-      const otp = generateOTP();
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-      await OTP.create({
-        email,
-        otp,
-        password: user.password,
-        expiresAt,
-        attempts: 0
-      });
-
-      await sendOTPEmail(email, otp);
+      await createAndSendOTP({ email, passwordHash: user.password });
 
       console.log(`Verification OTP sent to ${email}`);
 
@@ -239,9 +301,13 @@ const loginUser = async (req, res) => {
 
     console.log(`Login successful for ${email}`);
 
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: "Server auth misconfiguration" });
+    }
+
     const token = jwt.sign(
-      { userCode: user.userCode }, 
-      process.env.JWT_SECRET || "anonx_super_secret", 
+      { userCode: user.userCode },
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -264,5 +330,6 @@ const loginUser = async (req, res) => {
 module.exports = {
   registerUser,
   verifyOTP,
-  loginUser
+  loginUser,
+  resendOTP
 };

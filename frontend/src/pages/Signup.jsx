@@ -28,21 +28,22 @@ function Signup() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSendOTP = async () => {
+  const handleSendOTP = async (e) => {
+    e.preventDefault();
     setMessage("");
     if (!validate()) return;
     
-    setIsLoading(true);
+      setIsLoading(true);
 
     try {
-      const res = await axios.post("/auth/register", {
+      await axios.post("/auth/register", {
         email,
         password
       });
 
       setMessage("OTP sent! Redirecting to verification...");
       setTimeout(() => {
-        navigate("/verify-otp", { state: { email, password } });
+        navigate("/verify-otp", { state: { email } });
       }, 1500);
 
     } catch (error) {
@@ -61,6 +62,7 @@ function Signup() {
       <div className="relative bg-neutral-900/80 backdrop-blur-xl p-8 rounded-2xl border border-neutral-800/50 shadow-2xl w-full max-w-[360px] z-10 transition-all duration-300">
         <h1 className="text-2xl font-bold mb-6 text-center text-white tracking-tight">Create Account</h1>
         
+        <form onSubmit={handleSendOTP}>
         <div className="mb-4">
           <input
             type="email"
@@ -90,12 +92,13 @@ function Signup() {
         </div>
 
         <button
-          onClick={handleSendOTP}
+          type="submit"
           disabled={isLoading}
           className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-3 rounded-lg shadow-lg hover:shadow-indigo-500/25 hover:from-indigo-400 hover:to-purple-500 active:scale-[0.98] transition-all duration-200 font-medium disabled:opacity-50"
         >
           {isLoading ? "Sending OTP..." : "Sign Up"}
         </button>
+        </form>
 
         {message && (
           <p className={`mt-4 text-sm text-center font-medium ${message.includes("Redirecting") ? "text-emerald-400" : "text-red-400"}`}>

@@ -1,17 +1,21 @@
 const User = require("../models/User");
 const Block = require("../models/Block");
 const Conversation = require("../models/Conversation");
+const Message = require("../models/Message");
+const OTP = require("../models/OTP");
 const generateAlias = require("../utils/generateAlias");
+const getISTDayEpoch = require("../utils/getISTDayEpoch");
+const bcrypt = require("bcrypt");
 
 const searchUser = async (req, res) => {
   try {
 
     const { userCode } = req.params;
-    const { currentUserCode } = req.body;
+    const currentUserCode = req.user?.userCode;
 
     if (!currentUserCode) {
-      return res.status(400).json({
-        message: "Current user code is required"
+      return res.status(401).json({
+        message: "Unauthorized"
       });
     }
 
@@ -42,23 +46,6 @@ const searchUser = async (req, res) => {
       });
     }
 
-    // check if current user blocked target
-    // const blockedByMe = await Block.findOne({
-    //   blocker: currentUserCode,
-    //   blocked: userCode
-    // });
-
-    // if (blockedByMe) {
-    //   return res.status(403).json({
-    //     message: "You have blocked this user"
-    //   });
-    // }
-
-    // res.status(200).json({
-    //   userCode: user.userCode
-    // });
-
-    // checks if conversation exists
     const codes = [currentUserCode, userCode].sort();
     const conversationKey = `${codes[0]}_${codes[1]}`;
 
@@ -80,7 +67,7 @@ const searchUser = async (req, res) => {
         await conversation.save();
     }
 
-    const todayEpoch = new Date().setUTCHours(0,0,0,0);
+    const todayEpoch = getISTDayEpoch();
 
     res.status(200).json({
         conversationId: conversation._id,
@@ -105,7 +92,8 @@ const searchUser = async (req, res) => {
 const blockUser = async (req, res) => {
   try {
 
-    const { currentUserCode, targetUserCode } = req.body;
+    const { targetUserCode } = req.body;
+    const currentUserCode = req.user?.userCode;
 
     if (!currentUserCode || !targetUserCode) {
       return res.status(400).json({
@@ -152,7 +140,14 @@ const blockUser = async (req, res) => {
 const unblockUser = async (req, res) => {
   try {
 
-    const { currentUserCode, targetUserCode } = req.body;
+    const { targetUserCode } = req.body;
+    const currentUserCode = req.user?.userCode;
+
+    if (!currentUserCode || !targetUserCode) {
+      return res.status(400).json({
+        message: "Both user codes are required"
+      });
+    }
 
     const result = await Block.findOneAndDelete({
       blocker: currentUserCode,
@@ -179,8 +174,70 @@ const unblockUser = async (req, res) => {
   }
 };
 
+const deleteMyAccount = async (req, res) => {
+  try {
+    const currentUserCode = req.user?.userCode;
+    const { password } = req.body;
+
+    if (!currentUserCode) {
+      return res.status(401).json({
+        message: "Unauthorized"
+      });
+    }
+
+    if (!password) {
+      return res.status(400).json({
+        message: "Password is required to delete account"
+      });
+    }
+
+    const user = await User.findOne({ userCode: currentUserCode });
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        message: "Incorrect password"
+      });
+    }
+
+    const conversations = await Conversation.find({
+      $or: [{ userA: currentUserCode }, { userB: currentUserCode }]
+    }).select("_id");
+
+    const conversationIds = conversations.map((conv) => conv._id);
+
+    if (conversationIds.length > 0) {
+      await Message.deleteMany({ conversationId: { $in: conversationIds } });
+      await Conversation.deleteMany({ _id: { $in: conversationIds } });
+    }
+
+    await Block.deleteMany({
+      $or: [{ blocker: currentUserCode }, { blocked: currentUserCode }]
+    });
+
+    await OTP.deleteMany({ email: user.email });
+    await User.deleteOne({ _id: user._id });
+
+    return res.status(200).json({
+      message: "Account deleted permanently"
+    });
+  } catch (error) {
+    console.error("Delete account error:", error.message);
+
+    return res.status(500).json({
+      message: "Server error"
+    });
+  }
+};
+
 module.exports = {
   searchUser,
   blockUser,
-  unblockUser
+  unblockUser,
+  deleteMyAccount
 };

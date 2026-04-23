@@ -1,11 +1,32 @@
 const Message = require("../models/Message");
 const Conversation = require("../models/Conversation");
 const Block = require("../models/Block");
+const getISTDayEpoch = require("../utils/getISTDayEpoch");
 
 const getMessages = async (req, res) => {
   try {
 
     const { conversationId } = req.params;
+    const currentUserCode = req.user?.userCode;
+
+    if (!currentUserCode) {
+      return res.status(401).json({
+        message: "Unauthorized"
+      });
+    }
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({
+        message: "Conversation not found"
+      });
+    }
+
+    if (conversation.userA !== currentUserCode && conversation.userB !== currentUserCode) {
+      return res.status(403).json({
+        message: "You are not part of this conversation"
+      });
+    }
 
     const messages = await Message.find({ conversationId })
       .sort({ timestamp: 1 });
@@ -27,11 +48,18 @@ const getMessages = async (req, res) => {
 const sendMessage = async (req, res) => {
   try {
 
-    const { conversationId, senderUserCode, messageText } = req.body;
+    const { conversationId, messageText } = req.body;
+    const senderUserCode = req.user?.userCode;
 
-    if (!conversationId || !senderUserCode || !messageText) {
+    if (!conversationId || !messageText) {
       return res.status(400).json({
-        message: "conversationId, senderUserCode and messageText are required"
+        message: "conversationId and messageText are required"
+      });
+    }
+
+    if (!senderUserCode) {
+      return res.status(401).json({
+        message: "Unauthorized"
       });
     }
 
@@ -84,7 +112,7 @@ const sendMessage = async (req, res) => {
     }
 
     // message limit check
-    const todayEpoch = new Date().setUTCHours(0,0,0,0);
+    const todayEpoch = getISTDayEpoch();
 
     if (senderUserCode === userA) {
       if (!conversation.lastMessageEpochA || conversation.lastMessageEpochA.getTime() !== todayEpoch) {
@@ -146,11 +174,30 @@ const markAsRead = async (req, res) => {
   try {
 
     const { conversationId } = req.params;
-    const { currentUserCode } = req.body;
+    const currentUserCode = req.user?.userCode;
 
-    if (!conversationId || !currentUserCode) {
+    if (!conversationId) {
       return res.status(400).json({
-        message: "conversationId and currentUserCode are required"
+        message: "conversationId is required"
+      });
+    }
+
+    if (!currentUserCode) {
+      return res.status(401).json({
+        message: "Unauthorized"
+      });
+    }
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({
+        message: "Conversation not found"
+      });
+    }
+
+    if (conversation.userA !== currentUserCode && conversation.userB !== currentUserCode) {
+      return res.status(403).json({
+        message: "You are not part of this conversation"
       });
     }
 
