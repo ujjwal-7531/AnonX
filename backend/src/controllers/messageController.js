@@ -141,7 +141,16 @@ const sendMessage = async (req, res) => {
     });
 
     // Target exactly the two users' private encrypted rooms for bulletproof global delivery
-    global.io.to(userA).to(userB).emit("receive_message", message);
+    // We include conversation details so receiving frontend can immediately show names without refresh
+    const messagePayload = {
+      ...message.toObject(),
+      userA,
+      userB,
+      aliasForA: conversation.aliasForA,
+      aliasForB: conversation.aliasForB
+    };
+
+    global.io.to(userA).to(userB).emit("receive_message", messagePayload);
     await message.save();
 
     // update counters

@@ -101,11 +101,15 @@ import toast from "react-hot-toast";function Chat() {
             );
           } else {
             // Secretly inject a brand new chat into the sidebar layout
+            const aliasToShow = userCode === message.userA ? message.aliasForA : message.aliasForB;
+
             const newConv = {
               _id: message.conversationId,
               conversationId: message.conversationId,
               targetUserCode: message.sender,
-              displayName: message.sender,
+              displayName: aliasToShow || message.sender,
+              aliasForA: message.aliasForA,
+              aliasForB: message.aliasForB,
               unreadCount: 1,
             };
             return [newConv, ...prev];
