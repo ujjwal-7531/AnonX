@@ -4,7 +4,6 @@ const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const OTP = require("../models/OTP");
 const generateAlias = require("../utils/generateAlias");
-const getISTDayEpoch = require("../utils/getISTDayEpoch");
 const bcrypt = require("bcrypt");
 
 const searchUser = async (req, res) => {
@@ -67,7 +66,12 @@ const searchUser = async (req, res) => {
         await conversation.save();
     }
 
-    const todayEpoch = getISTDayEpoch();
+    const now = new Date();
+    const todayEpoch = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate()
+    );
 
     res.status(200).json({
         conversationId: conversation._id,

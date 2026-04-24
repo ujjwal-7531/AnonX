@@ -1,7 +1,6 @@
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const Block = require("../models/Block");
-const getISTDayEpoch = require("../utils/getISTDayEpoch");
 
 const updateNickname = async (req, res) => {
   try {
@@ -95,7 +94,12 @@ const getUserConversations = async (req, res) => {
       let sentCount = 0;
 
       // determine display name and target user
-      const todayEpoch = getISTDayEpoch();
+      const now = new Date();
+      const todayEpoch = Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate()
+      );
       if (conv.userA === currentUserCode) {
         displayName = conv.nicknameForA || conv.aliasForA;
         targetUserCode = conv.userB;

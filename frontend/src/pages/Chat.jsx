@@ -108,8 +108,6 @@ import toast from "react-hot-toast";function Chat() {
               conversationId: message.conversationId,
               targetUserCode: message.sender,
               displayName: aliasToShow || message.sender,
-              aliasForA: message.aliasForA,
-              aliasForB: message.aliasForB,
               unreadCount: 1,
             };
             return [newConv, ...prev];
@@ -173,8 +171,6 @@ import toast from "react-hot-toast";function Chat() {
         conversationId,
         _id: conversationId,
         displayName: alias || "New Chat",
-        aliasForA: alias,
-        aliasForB: alias,
         targetUserCode: searchCode.trim(),
         sentCount: sentCount || 0
       };
@@ -186,7 +182,7 @@ import toast from "react-hot-toast";function Chat() {
         } else {
             // Already there
             const existing = prev.find(c => (c.conversationId || c._id) === conversationId);
-            if (existing) newConv.displayName = existing.aliasForA || existing.displayName || alias;
+            if (existing) newConv.displayName = existing.displayName || alias;
             return prev;
         }
       });
@@ -434,7 +430,7 @@ import toast from "react-hot-toast";function Chat() {
                   >
                     <div className="flex flex-col">
                        <span className={`font-medium tracking-wide text-sm ${isActive ? 'text-indigo-400' : 'text-neutral-200'}`}>
-                         {conv.aliasForA || conv.displayName || "Unknown Chat"}
+                         {conv.displayName || "Unknown Chat"}
                        </span>
                     </div>
                     {conv.unreadCount > 0 && !isActive && (
@@ -476,10 +472,10 @@ import toast from "react-hot-toast";function Chat() {
             {/* Header Identity Plate */}
             <div className="h-[73px] flex items-center px-6 bg-neutral-900/60 backdrop-blur-md border-b border-neutral-800/50 shrink-0 shadow-sm z-10 w-full relative">
                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold opacity-90 shadow-md shadow-indigo-500/20 mr-4 border border-indigo-400/20">
-                 {(selectedConv.aliasForA || selectedConv.displayName || '?').charAt(0).toUpperCase()}
+                 {(selectedConv.displayName || '?').charAt(0).toUpperCase()}
                </div>
                <div className="flex flex-col">
-                  <span className="font-bold text-white tracking-wide text-[15px]">{selectedConv.aliasForA || selectedConv.displayName}</span>
+                  <span className="font-bold text-white tracking-wide text-[15px]">{selectedConv.displayName}</span>
                </div>
                
                {/* Context Menu Dropdown */}

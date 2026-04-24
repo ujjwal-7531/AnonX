@@ -1,7 +1,6 @@
 const Message = require("../models/Message");
 const Conversation = require("../models/Conversation");
 const Block = require("../models/Block");
-const getISTDayEpoch = require("../utils/getISTDayEpoch");
 
 const getMessages = async (req, res) => {
   try {
@@ -112,7 +111,12 @@ const sendMessage = async (req, res) => {
     }
 
     // message limit check
-    const todayEpoch = getISTDayEpoch();
+    const now = new Date();
+    const todayEpoch = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate()
+    );
 
     if (senderUserCode === userA) {
       if (!conversation.lastMessageEpochA || conversation.lastMessageEpochA.getTime() !== todayEpoch) {
