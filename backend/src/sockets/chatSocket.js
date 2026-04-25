@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const Conversation = require("../models/Conversation");
 
 const chatSocket = (io) => {
   if (!process.env.JWT_SECRET) {
@@ -22,6 +23,36 @@ const chatSocket = (io) => {
     const userCode = socket.userCode;
     socket.join(userCode);
     console.log(`User ${userCode} securely authenticated and joined global namespace ${socket.id}`);
+
+    const emitTypingState = async (eventName, payload = {}) => {
+      try {
+        const { conversationId } = payload;
+        if (!conversationId) return;
+
+        const conversation = await Conversation.findById(conversationId).select("userA userB");
+        if (!conversation) return;
+
+        if (conversation.userA !== userCode && conversation.userB !== userCode) return;
+
+        const targetUserCode = conversation.userA === userCode ? conversation.userB : conversation.userA;
+        if (!targetUserCode) return;
+
+        io.to(targetUserCode).emit(eventName, {
+          conversationId,
+          sender: userCode
+        });
+      } catch (error) {
+        console.error(`${eventName} socket error:`, error.message);
+      }
+    };
+
+    socket.on("typing", (payload) => {
+      emitTypingState("typing", payload);
+    });
+
+    socket.on("stop_typing", (payload) => {
+      emitTypingState("stop_typing", payload);
+    });
 
     socket.on("disconnect", () => {
       console.log(`Authenticated user ${userCode} disconnected:`, socket.id);

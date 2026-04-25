@@ -12,8 +12,11 @@ import toast from "react-hot-toast";function Chat() {
   const [isSearching, setIsSearching] = useState(false);
   const [socket, setSocket] = useState(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const navigate = useNavigate();
   const userCode = localStorage.getItem("userCode");
 
@@ -120,6 +123,47 @@ import toast from "react-hot-toast";function Chat() {
     return () => socket.off("receive_message", handleReceive);
   }, [socket, selectedConv, userCode]);
 
+  useEffect(() => {
+    if (!socket || !selectedConv || !userCode) return;
+
+    const activeConvId = selectedConv.conversationId || selectedConv._id;
+
+    const handleTyping = ({ conversationId, sender }) => {
+      if (conversationId !== activeConvId || sender === userCode) return;
+      setIsOtherTyping(true);
+    };
+
+    const handleStopTyping = ({ conversationId, sender }) => {
+      if (conversationId !== activeConvId || sender === userCode) return;
+      setIsOtherTyping(false);
+    };
+
+    socket.on("typing", handleTyping);
+    socket.on("stop_typing", handleStopTyping);
+
+    return () => {
+      socket.off("typing", handleTyping);
+      socket.off("stop_typing", handleStopTyping);
+    };
+  }, [socket, selectedConv, userCode]);
+
+  useEffect(() => {
+    setIsOtherTyping(false);
+    setIsTyping(false);
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  }, [selectedConv]);
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Handle auto-scroll to latest message securely
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -204,6 +248,16 @@ import toast from "react-hot-toast";function Chat() {
     const textToSend = messageText;
     setMessageText("");
 
+    const activeConvId = selectedConv.conversationId || selectedConv._id;
+    if (isTyping && socket && activeConvId) {
+      socket.emit("stop_typing", { conversationId: activeConvId });
+      setIsTyping(false);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    }
+
     try {
       const res = await axios.post("/messages/send", {
         conversationId: selectedConv.conversationId || selectedConv._id,
@@ -225,6 +279,36 @@ import toast from "react-hot-toast";function Chat() {
     } catch (error) {
       setMessageText(textToSend); // Restore text so they don't lose it
       toast.error(error.response?.data?.message || "Error sending message");
+    }
+  };
+
+  const handleMessageInputChange = (e) => {
+    const value = e.target.value;
+    setMessageText(value);
+
+    if (!socket || !selectedConv) return;
+    const activeConvId = selectedConv.conversationId || selectedConv._id;
+    if (!activeConvId) return;
+
+    if (value.trim()) {
+      if (!isTyping) {
+        socket.emit("typing", { conversationId: activeConvId });
+        setIsTyping(true);
+      }
+
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit("stop_typing", { conversationId: activeConvId });
+        setIsTyping(false);
+        typingTimeoutRef.current = null;
+      }, 1000);
+    } else if (isTyping) {
+      socket.emit("stop_typing", { conversationId: activeConvId });
+      setIsTyping(false);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
     }
   };
 
@@ -476,6 +560,9 @@ import toast from "react-hot-toast";function Chat() {
                </div>
                <div className="flex flex-col">
                   <span className="font-bold text-white tracking-wide text-[15px]">{selectedConv.displayName}</span>
+                  <span className={`text-[11px] mt-0.5 transition-opacity ${isOtherTyping ? 'text-emerald-400 opacity-100' : 'text-transparent opacity-0'}`}>
+                    typing...
+                  </span>
                </div>
                
                {/* Context Menu Dropdown */}
@@ -535,7 +622,7 @@ import toast from "react-hot-toast";function Chat() {
                   <input
                     type="text"
                     value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
+                    onChange={handleMessageInputChange}
                     placeholder="Type an anonymous message..."
                     className="w-full bg-neutral-950 border border-neutral-800 text-white text-[15px] rounded-xl pl-5 pr-16 py-3 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 shadow-inner placeholder-neutral-600 transition-all"
                     maxLength={250}
