@@ -2,7 +2,6 @@ const User = require("../models/User");
 const Block = require("../models/Block");
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
-const OTP = require("../models/OTP");
 const generateAlias = require("../utils/generateAlias");
 
 const updatePublicKey = async (req, res) => {
@@ -256,7 +255,6 @@ const deleteMyAccount = async (req, res) => {
       $or: [{ blocker: currentUserCode }, { blocked: currentUserCode }]
     });
 
-    await OTP.deleteMany({ email: user.email });
     await User.deleteOne({ _id: user._id });
 
     // Notify all active chat partners via socket

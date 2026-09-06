@@ -1,10 +1,19 @@
 const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema({
-  email: {
+  username: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    trim: true,
+    lowercase: true,
+    minlength: 3,
+    maxlength: 30
+  },
+
+  password: {
+    type: String,
+    required: true
   },
 
   userCode: {
@@ -13,11 +22,6 @@ const userSchema = new mongoose.Schema({
     unique: true,
     minlength: 6,
     maxlength: 6
-  },
-
-  isVerified: {
-    type: Boolean,
-    default: false
   },
 
   publicKey: {
