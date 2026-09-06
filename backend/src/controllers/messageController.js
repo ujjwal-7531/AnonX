@@ -173,7 +173,9 @@ const sendMessage = async (req, res) => {
       aliasForB: conversation.aliasForB
     };
 
-    global.io.to(userA).to(userB).emit("receive_message", messagePayload);
+    if (global.io) {
+      global.io.to(userA).to(userB).emit("receive_message", messagePayload);
+    }
 
     res.status(201).json({
       message: "Message sent",

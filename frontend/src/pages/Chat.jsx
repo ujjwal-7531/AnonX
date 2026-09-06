@@ -50,8 +50,9 @@ function Chat() {
       return;
     }
 
-    // Initialize socket securely with JWT
-    const newSocket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
+    // Initialize socket securely with JWT (normalize trailing slash)
+    const socketUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+    const newSocket = io(socketUrl, {
       auth: { token: localStorage.getItem("token") }
     });
     setSocket(newSocket);

@@ -22,7 +22,7 @@ const corsOptions = {
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 1000, // 1000 requests per 15 minutes for smooth real-time messaging
   skipOptions: true,
   skip: (req) => req.headers["x-benchmark-key"] === "anonx-bench" || process.env.BENCHMARK === "true",
   message: {
@@ -31,7 +31,7 @@ const limiter = rateLimit({
 });
 const authLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 20,
+  max: 100, // 100 auth attempts per 10 minutes
   skipOptions: true
 });
 

@@ -4,8 +4,9 @@ import './index.css'
 import App from './App.jsx'
 import axios from 'axios'
 
-// Set dynamic base URL for deployed environments
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+// Set dynamic base URL for deployed environments (normalize trailing slashes)
+const rawBaseURL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+axios.defaults.baseURL = rawBaseURL.replace(/\/$/, "");
 
 // Global interceptor to attach JWT token to all requests
 axios.interceptors.request.use((config) => {
