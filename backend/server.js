@@ -58,9 +58,20 @@ app.use("/users", limiter, userRoutes);
 app.use("/messages", limiter, messageRoutes);
 app.use("/conversations", limiter, conversationRoutes);
 
-app.get("/", (req, res) => {
-  res.send("AnonX backend running");
-});
+const path = require("path");
+const fs = require("fs");
+
+const frontendDistPath = path.join(__dirname, "../frontend/dist");
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(frontendDistPath, "index.html"));
+  });
+} else {
+  app.get("/", (req, res) => {
+    res.send("AnonX backend running");
+  });
+}
 
 const Message = require("./src/models/Message");
 
