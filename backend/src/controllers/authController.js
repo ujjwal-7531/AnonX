@@ -115,8 +115,5 @@ const login = async (req, res) => {
 
 module.exports = {
   register,
-  login,
-  // Backward-compatible aliases if requested
-  sendOTP: register,
-  verifyOTP: login
+  login
 };
