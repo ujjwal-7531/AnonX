@@ -1,4 +1,5 @@
 // Native Web Crypto API utilities for ECDH (P-256) + AES-GCM (256-bit) E2EE
+import { p256 } from "@noble/curves/nist.js";
 
 // Base64 Helpers
 function arrayBufferToBase64(buffer) {
@@ -19,12 +20,87 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+function concatUint8(a, b) {
+  const c = new Uint8Array(a.length + b.length);
+  c.set(a, 0);
+  c.set(b, a.length);
+  return c;
+}
+
 // In-Memory Key Caches
 let cachedLocalKeyPair = null;
 const derivedSharedKeyCache = new Map();
 
 /**
- * Retrieves existing local ECDH P-256 keypair or generates a new one.
+ * Derives a deterministic ECDH P-256 keypair from username and password.
+ * Guaranteed to generate the exact same Private and Public Key on every device/browser!
+ */
+export async function deriveDeterministicKeyPair(username, password) {
+  if (!username || !password) {
+    return getOrGenerateKeyPair();
+  }
+
+  const encoder = new TextEncoder();
+  const salt = encoder.encode("anonx_salt_v1_" + username.trim().toLowerCase());
+  
+  const keyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+
+  const derivedBits = await window.crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    256
+  );
+
+  const seed = new Uint8Array(derivedBits);
+  const pubBytes = p256.getPublicKey(seed, false); // 65-byte uncompressed point (0x04 + X + Y)
+
+  // Standard P-256 SPKI DER Header (27 bytes)
+  const spkiHeader = hexToBytes("3059301306072a8648ce3d020106082a8648ce3d030107034200");
+  const spkiDer = concatUint8(spkiHeader, pubBytes);
+
+  // Standard P-256 PKCS#8 DER Header (36 bytes prefix + 5 bytes suffix prefix)
+  const pkcs8Prefix = hexToBytes("308187020100301306072a8648ce3d020106082a8648ce3d030107046d306b0201010420");
+  const pkcs8SuffixPrefix = hexToBytes("a144034200");
+  const pkcs8Der = concatUint8(concatUint8(pkcs8Prefix, seed), concatUint8(pkcs8SuffixPrefix, pubBytes));
+
+  const privateKey = await window.crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8Der.buffer,
+    { name: "ECDH", namedCurve: "P-256" },
+    true,
+    ["deriveKey", "deriveBits"]
+  );
+
+  const publicKeyBase64 = arrayBufferToBase64(spkiDer.buffer);
+  const privateKeyBase64 = arrayBufferToBase64(pkcs8Der.buffer);
+
+  localStorage.setItem("anonx_ecdh_pub", publicKeyBase64);
+  localStorage.setItem("anonx_ecdh_priv", privateKeyBase64);
+
+  cachedLocalKeyPair = {
+    publicKeyBase64,
+    privateKey
+  };
+
+  return cachedLocalKeyPair;
+}
+
+/**
+ * Retrieves existing local ECDH P-256 keypair or generates a fallback keypair.
  * Returns { publicKeyBase64, privateKey }
  */
 export async function getOrGenerateKeyPair() {
@@ -52,11 +128,11 @@ export async function getOrGenerateKeyPair() {
       };
       return cachedLocalKeyPair;
     } catch (err) {
-      console.warn("Could not import stored keypair, generating fresh keypair:", err);
+      console.warn("Could not import stored keypair, generating fallback keypair:", err);
     }
   }
 
-  // Generate new ECDH keypair
+  // Fallback ECDH keypair
   const keyPair = await window.crypto.subtle.generateKey(
     { name: "ECDH", namedCurve: "P-256" },
     true,

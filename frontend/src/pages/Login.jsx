@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { deriveDeterministicKeyPair } from "../utils/cryptoUtils";
 
 function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -72,9 +73,14 @@ function Login() {
       if (res.data.userCode && res.data.token) {
         localStorage.setItem("userCode", res.data.userCode);
         localStorage.setItem("token", res.data.token);
-        if (res.data.username) {
-          localStorage.setItem("username", res.data.username);
+        // Derive deterministic E2EE keypair for multi-device compatibility
+        try {
+          const keyPair = await deriveDeterministicKeyPair(trimmedUsername, trimmedPassword);
+          await axios.post("/users/public-key", { publicKey: keyPair.publicKeyBase64 });
+        } catch (keyErr) {
+          console.warn("Could not sync E2EE keypair on login:", keyErr.message);
         }
+
         toast.success(res.data.message || (isSignUp ? "Account created!" : "Logged in successfully!"));
         navigate("/chat");
       }
