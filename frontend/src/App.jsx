@@ -1,8 +1,6 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import Signup from "./pages/Signup";
 import Login from "./pages/Login";
-import VerifyOTP from "./pages/VerifyOTP";
 import Chat from "./pages/Chat";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -23,18 +21,19 @@ function App() {
         }} 
       />
       <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Login />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/verify-otp" element={<VerifyOTP />} />
-        <Route path="/chat" element={
-          <ProtectedRoute>
-            <Chat />
-          </ProtectedRoute>
-        } />
-      </Routes>
-    </BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Navigate to="/login" replace />} />
+          <Route path="/verify-otp" element={<Navigate to="/login" replace />} />
+          <Route path="/chat" element={
+            <ProtectedRoute>
+              <Chat />
+            </ProtectedRoute>
+          } />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
     </>
   );
 }

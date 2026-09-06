@@ -11,11 +11,6 @@ const otpSchema = new mongoose.Schema({
     required: true
   },
 
-  password: {
-    type: String,
-    required: true
-  },
-
   expiresAt: {
     type: Date,
     required: true

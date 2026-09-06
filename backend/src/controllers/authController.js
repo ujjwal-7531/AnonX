@@ -1,6 +1,5 @@
 const User = require("../models/User");
 const OTP = require("../models/OTP");
-
 const generateUserCode = require("../utils/generateUserCode");
 const generateOTP = require("../utils/generateOTP");
 const validateEmail = require("../utils/validateEmail");
@@ -18,40 +17,17 @@ const getRemainingCooldownSeconds = (otpRecord) => {
   return Math.max(0, OTP_COOLDOWN_SECONDS - elapsedSeconds);
 };
 
-const createAndSendOTP = async ({ email, passwordHash }) => {
-  const otp = generateOTP();
-  const hashedOtp = await bcrypt.hash(otp, 10);
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
-
-  await OTP.deleteMany({ email });
-  await OTP.create({
-    email,
-    otp: hashedOtp,
-    password: passwordHash,
-    expiresAt,
-    attempts: 0
-  });
-  await sendOTPEmail(email, otp);
-};
-
-
-// register user
-const registerUser = async (req, res) => {
+// Send OTP to email (Unified for Login & Register)
+const sendOTP = async (req, res) => {
   try {
-    let { email,password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+    let { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
     }
     email = email.trim().toLowerCase();
 
     if (!validateEmail(email)) {
       return res.status(400).json({ message: "Invalid email format" });
-    }
-
-    const existingUser = await User.findOne({ email });
-
-    if (existingUser) {
-      return res.status(409).json({ message: "Email already registered" });
     }
 
     const existingOTP = await OTP.findOne({ email });
@@ -63,26 +39,35 @@ const registerUser = async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await createAndSendOTP({ email, passwordHash: hashedPassword });
+    const otp = generateOTP();
+    const hashedOtp = await bcrypt.hash(otp, 10);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    console.log(`OTP sent successfully to ${email}`);
+    await OTP.deleteMany({ email });
+    await OTP.create({
+      email,
+      otp: hashedOtp,
+      expiresAt,
+      attempts: 0
+    });
+
+    await sendOTPEmail(email, otp);
+
+    console.log(`[Auth] OTP sent to ${email}`);
 
     res.status(200).json({
-      message: "OTP sent to email"
+      message: "Verification code sent to email"
     });
 
   } catch (error) {
-    console.error(error);
-
+    console.error("Send OTP error:", error);
     res.status(500).json({
-      message: "Server error while sending OTP"
+      message: "Server error while sending verification code"
     });
   }
 };
 
-
-// verify otp
+// Verify OTP & Authenticate (Unified Passwordless Flow)
 const verifyOTP = async (req, res) => {
   try {
     let { email, otp } = req.body;
@@ -105,231 +90,88 @@ const verifyOTP = async (req, res) => {
 
     if (!otpRecord) {
       return res.status(400).json({
-        message: "OTP not found. Please request a new OTP."
+        message: "Code not found or expired. Please request a new code."
       });
     }
 
-    // OTP expired
+    // OTP expired check
     if (otpRecord.expiresAt < new Date()) {
       await OTP.deleteMany({ email });
-
       return res.status(400).json({
-        message: "OTP expired. Please request a new OTP."
+        message: "Verification code expired. Please request a new one."
       });
     }
 
-    // attempt limit check
+    // Attempt limit check
     if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
       await OTP.deleteMany({ email });
-
       return res.status(429).json({
-        message: "Too many incorrect attempts. Request a new OTP."
+        message: "Too many incorrect attempts. Please request a new code."
       });
     }
 
-    // wrong OTP
+    // Compare OTP hash
     const isValidOTP = await bcrypt.compare(otp.toString().trim(), otpRecord.otp);
     if (!isValidOTP) {
       otpRecord.attempts += 1;
       await otpRecord.save();
-
       return res.status(400).json({
-        message: "Invalid OTP"
+        message: "Invalid verification code"
       });
     }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({
-        message: "User already exists"
-      });
-    }
-
-    // create user after verification
-    const userCode =await generateUserCode();
-
-    const newUser = new User({
-      email,
-      password: otpRecord.password,
-      userCode,
-      isVerified: true
-    });
-
-    await newUser.save();
-    await OTP.deleteMany({ email });
-
-    console.log(`Email ${email} verified successfully`);
-
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({ message: "Server auth misconfiguration" });
-    }
-
-    const token = jwt.sign(
-      { userCode },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.status(201).json({
-      message: "Email verified and account created",
-      userCode,
-      token
-    });
-
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      message: "Server error"
-    });
-  }
-};
-
-const resendOTP = async (req, res) => {
-  try {
-    let { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        message: "Email is required"
-      });
-    }
-
-    email = email.trim().toLowerCase();
-    if (!validateEmail(email)) {
-      return res.status(400).json({
-        message: "Invalid email format"
-      });
-    }
-
-    const user = await User.findOne({ email });
-    if (user?.isVerified) {
-      return res.status(409).json({
-        message: "Email already verified. Please login."
-      });
-    }
-
-    const existingOTP = await OTP.findOne({ email });
-    if (!existingOTP) {
-      return res.status(400).json({
-        message: "OTP session not found. Please sign up again."
-      });
-    }
-
-    const remainingCooldown = getRemainingCooldownSeconds(existingOTP);
-    if (remainingCooldown > 0) {
-      return res.status(429).json({
-        message: `OTP already sent. Please wait ${remainingCooldown} seconds before requesting another.`
-      });
-    }
-
-    const passwordHash = existingOTP.password || user?.password;
-    if (!passwordHash) {
-      return res.status(400).json({
-        message: "OTP session not found. Please sign up again."
-      });
-    }
-
-    await createAndSendOTP({ email, passwordHash });
-
-    return res.status(200).json({
-      message: "OTP resent successfully"
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      message: "Server error while resending OTP"
-    });
-  }
-};
-
-
-// login user
-const loginUser = async (req, res) => {
-  try {
-    let { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        message: "Email and password are required"
-      });
-    }
-
-    email = email.trim().toLowerCase();
-
-    if (!validateEmail(email)) {
-      return res.status(400).json({
-        message: "Invalid email format"
-      });
-    }
-
-    const user = await User.findOne({ email });
+    // Retrieve existing user or create a new one
+    let user = await User.findOne({ email });
+    let isNewUser = false;
 
     if (!user) {
-      return res.status(404).json({
-        message: "Account does not exist"
+      isNewUser = true;
+      const userCode = await generateUserCode();
+      user = new User({
+        email,
+        userCode,
+        isVerified: true
       });
+      await user.save();
+    } else if (!user.isVerified) {
+      user.isVerified = true;
+      await user.save();
     }
 
-    // user not verified → resend OTP
-    if (!user.isVerified) {
-
-      const existingOTP = await OTP.findOne({ email });
-      const remainingCooldown = getRemainingCooldownSeconds(existingOTP);
-
-      if (remainingCooldown > 0) {
-        return res.status(429).json({
-          message: `OTP already sent. Please wait ${remainingCooldown} seconds before requesting another.`
-        });
-      }
-
-      await createAndSendOTP({ email, passwordHash: user.password });
-
-      console.log(`Verification OTP sent to ${email}`);
-
-      return res.status(200).json({
-        message: "Please verify your email. OTP sent."
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({
-        message: "Invalid credentials"
-      });
-    }
-
-    console.log(`Login successful for ${email}`);
+    // Delete used OTP
+    await OTP.deleteMany({ email });
 
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({ message: "Server auth misconfiguration" });
     }
 
+    // Issue JWT token (7-day duration)
     const token = jwt.sign(
       { userCode: user.userCode },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.status(200).json({
-      message: "Login successful",
+    console.log(`[Auth] ${isNewUser ? "Created new user" : "Logged in user"} ${email} (${user.userCode})`);
+
+    res.status(isNewUser ? 201 : 200).json({
+      message: isNewUser ? "Account created successfully" : "Welcome back",
       userCode: user.userCode,
       token
     });
 
   } catch (error) {
-    console.error(error);
-
+    console.error("Verify OTP error:", error);
     res.status(500).json({
-      message: "Server error"
+      message: "Server error during verification"
     });
   }
 };
 
-
 module.exports = {
-  registerUser,
+  sendOTP,
+  registerUser: sendOTP, // Alias for backward compatibility
   verifyOTP,
-  loginUser,
-  resendOTP
+  loginUser: sendOTP,    // Alias for backward compatibility
+  resendOTP: sendOTP
 };

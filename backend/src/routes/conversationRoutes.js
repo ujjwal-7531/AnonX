@@ -7,6 +7,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 router.use(authMiddleware);
 
 router.patch("/:conversationId/nickname", updateNickname);
+router.patch("/nickname/:conversationId", updateNickname);
 router.get("/:userCode", getUserConversations);
 
 module.exports = router;

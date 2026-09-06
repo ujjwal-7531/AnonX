@@ -7,11 +7,6 @@ const userSchema = new mongoose.Schema({
     unique: true
   },
 
-  password: {
-    type: String,
-    required: true
-  },
-
   userCode: {
     type: String,
     required: true,
@@ -23,6 +18,11 @@ const userSchema = new mongoose.Schema({
   isVerified: {
     type: Boolean,
     default: false
+  },
+
+  publicKey: {
+    type: String,
+    default: null
   },
 
   createdAt: {

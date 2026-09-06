@@ -4,11 +4,48 @@ const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const OTP = require("../models/OTP");
 const generateAlias = require("../utils/generateAlias");
-const bcrypt = require("bcrypt");
+
+const updatePublicKey = async (req, res) => {
+  try {
+    const { publicKey } = req.body;
+    const currentUserCode = req.user?.userCode;
+
+    if (!currentUserCode) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!publicKey) {
+      return res.status(400).json({ message: "PublicKey is required" });
+    }
+
+    await User.findOneAndUpdate(
+      { userCode: currentUserCode },
+      { publicKey }
+    );
+
+    res.status(200).json({ message: "Public key updated successfully" });
+  } catch (error) {
+    console.error("Update public key error:", error.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getPublicKey = async (req, res) => {
+  try {
+    const { userCode } = req.params;
+    const user = await User.findOne({ userCode }).select("publicKey");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json({ publicKey: user.publicKey });
+  } catch (error) {
+    console.error("Get public key error:", error.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 const searchUser = async (req, res) => {
   try {
-
     const { userCode } = req.params;
     const currentUserCode = req.user?.userCode;
 
@@ -25,15 +62,15 @@ const searchUser = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ userCode });
+    const targetUser = await User.findOne({ userCode });
 
-    if (!user) {
+    if (!targetUser) {
       return res.status(404).json({
         message: "User not found"
       });
     }
 
-    // check if target user blocked current user
+    // Check if target user blocked current user
     const blockedByTarget = await Block.findOne({
       blocker: userCode,
       blocked: currentUserCode
@@ -51,19 +88,19 @@ const searchUser = async (req, res) => {
     let conversation = await Conversation.findOne({ conversationKey });
 
     if (!conversation) {
+      const aliasForA = generateAlias();
+      const aliasForB = generateAlias();
 
-        const aliasForA = generateAlias();
-        const aliasForB = generateAlias();
+      conversation = new Conversation({
+        conversationKey,
+        userA: codes[0],
+        userB: codes[1],
+        aliasForA,
+        aliasForB,
+        lastMessageAt: new Date()
+      });
 
-        conversation = new Conversation({
-            conversationKey,
-            userA: codes[0],
-            userB: codes[1],
-            aliasForA,
-            aliasForB
-        });
-
-        await conversation.save();
+      await conversation.save();
     }
 
     const now = new Date();
@@ -73,20 +110,23 @@ const searchUser = async (req, res) => {
       now.getUTCDate()
     );
 
+    const currentUser = await User.findOne({ userCode: currentUserCode });
+
     res.status(200).json({
-        conversationId: conversation._id,
-        alias: conversation.userA === currentUserCode
-            ? conversation.aliasForA
-            : conversation.aliasForB,
-        sentCount: conversation.userA === currentUserCode 
-            ? ((!conversation.lastMessageEpochA || conversation.lastMessageEpochA.getTime() !== todayEpoch) ? 0 : (conversation.countAtoB || 0))
-            : ((!conversation.lastMessageEpochB || conversation.lastMessageEpochB.getTime() !== todayEpoch) ? 0 : (conversation.countBtoA || 0))
+      conversationId: conversation._id,
+      alias: conversation.userA === currentUserCode
+        ? conversation.aliasForA
+        : conversation.aliasForB,
+      targetUserCode: userCode,
+      targetPublicKey: targetUser.publicKey,
+      myPublicKey: currentUser?.publicKey || null,
+      sentCount: conversation.userA === currentUserCode 
+        ? ((!conversation.lastMessageEpochA || conversation.lastMessageEpochA.getTime() !== todayEpoch) ? 0 : (conversation.countAtoB || 0))
+        : ((!conversation.lastMessageEpochB || conversation.lastMessageEpochB.getTime() !== todayEpoch) ? 0 : (conversation.countBtoA || 0))
     });
 
   } catch (error) {
-
     console.error("Search user error:", error.message);
-
     res.status(500).json({
       message: "Server error"
     });
@@ -95,7 +135,6 @@ const searchUser = async (req, res) => {
 
 const blockUser = async (req, res) => {
   try {
-
     const { targetUserCode } = req.body;
     const currentUserCode = req.user?.userCode;
 
@@ -127,14 +166,20 @@ const blockUser = async (req, res) => {
       blocked: targetUserCode
     });
 
+    if (global.io) {
+      global.io.to(currentUserCode).to(targetUserCode).emit("block_updated", {
+        blocker: currentUserCode,
+        targetUserCode,
+        isBlocked: true
+      });
+    }
+
     res.status(200).json({
       message: "User blocked successfully"
     });
 
   } catch (error) {
-
     console.error("Block error:", error.message);
-
     res.status(500).json({
       message: "Server error"
     });
@@ -143,7 +188,6 @@ const blockUser = async (req, res) => {
 
 const unblockUser = async (req, res) => {
   try {
-
     const { targetUserCode } = req.body;
     const currentUserCode = req.user?.userCode;
 
@@ -164,14 +208,20 @@ const unblockUser = async (req, res) => {
       });
     }
 
+    if (global.io) {
+      global.io.to(currentUserCode).to(targetUserCode).emit("block_updated", {
+        blocker: currentUserCode,
+        targetUserCode,
+        isBlocked: false
+      });
+    }
+
     res.status(200).json({
       message: "User unblocked successfully"
     });
 
   } catch (error) {
-
     console.error("Unblock error:", error.message);
-
     res.status(500).json({
       message: "Server error"
     });
@@ -181,20 +231,9 @@ const unblockUser = async (req, res) => {
 const deleteMyAccount = async (req, res) => {
   try {
     const currentUserCode = req.user?.userCode;
-    const { password } = req.body;
-
     if (!currentUserCode) {
-      return res.status(401).json({
-        message: "Unauthorized"
-      });
+      return res.status(401).json({ message: "Unauthorized" });
     }
-
-    if (!password) {
-      return res.status(400).json({
-        message: "Password is required to delete account"
-      });
-    }
-
     const user = await User.findOne({ userCode: currentUserCode });
     if (!user) {
       return res.status(404).json({
@@ -202,16 +241,9 @@ const deleteMyAccount = async (req, res) => {
       });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        message: "Incorrect password"
-      });
-    }
-
     const conversations = await Conversation.find({
       $or: [{ userA: currentUserCode }, { userB: currentUserCode }]
-    }).select("_id");
+    });
 
     const conversationIds = conversations.map((conv) => conv._id);
 
@@ -227,6 +259,15 @@ const deleteMyAccount = async (req, res) => {
     await OTP.deleteMany({ email: user.email });
     await User.deleteOne({ _id: user._id });
 
+    // Notify all active chat partners via socket
+    if (global.io) {
+      conversations.forEach((conv) => {
+        const partnerCode = conv.userA === currentUserCode ? conv.userB : conv.userA;
+        global.io.to(partnerCode).emit("user_deleted", { deletedUserCode: currentUserCode, conversationId: conv._id });
+      });
+      global.io.in(currentUserCode).disconnectSockets();
+    }
+
     return res.status(200).json({
       message: "Account deleted permanently"
     });
@@ -240,6 +281,8 @@ const deleteMyAccount = async (req, res) => {
 };
 
 module.exports = {
+  updatePublicKey,
+  getPublicKey,
   searchUser,
   blockUser,
   unblockUser,

@@ -4,7 +4,6 @@ const Block = require("../models/Block");
 
 const getMessages = async (req, res) => {
   try {
-
     const { conversationId } = req.params;
     const currentUserCode = req.user?.userCode;
 
@@ -27,17 +26,24 @@ const getMessages = async (req, res) => {
       });
     }
 
-    const messages = await Message.find({ conversationId })
-      .sort({ timestamp: 1 });
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+    // Delete messages from previous days for this conversation
+    await Message.deleteMany({ conversationId, timestamp: { $lt: startOfToday } });
+
+    // Fetch today's messages
+    const messages = await Message.find({
+      conversationId,
+      timestamp: { $gte: startOfToday }
+    }).sort({ timestamp: 1 });
 
     res.status(200).json({
       messages
     });
 
   } catch (error) {
-
     console.error("Fetch messages error:", error.message);
-
     res.status(500).json({
       message: "Server error"
     });
@@ -46,13 +52,12 @@ const getMessages = async (req, res) => {
 
 const sendMessage = async (req, res) => {
   try {
-
-    const { conversationId, messageText } = req.body;
+    const { conversationId, messageText, iv } = req.body;
     const senderUserCode = req.user?.userCode;
 
-    if (!conversationId || !messageText) {
+    if (!conversationId || !messageText || !iv) {
       return res.status(400).json({
-        message: "conversationId and messageText are required"
+        message: "conversationId, messageText, and iv are required"
       });
     }
 
@@ -62,9 +67,10 @@ const sendMessage = async (req, res) => {
       });
     }
 
-    if (messageText.length > 250) {
+    // Check ciphertext length limit (1000 base64 chars max)
+    if (messageText.length > 1000) {
       return res.status(400).json({
-        message: "Message exceeds 250 character limit"
+        message: "Message payload size exceeds limit"
       });
     }
 
@@ -84,33 +90,32 @@ const sendMessage = async (req, res) => {
       });
     }
 
-    const receiverUserCode =
-      senderUserCode === userA ? userB : userA;
+    const receiverUserCode = senderUserCode === userA ? userB : userA;
 
-    // block check
+    // Block check
     const blockedByMe = await Block.findOne({
-        blocker: senderUserCode,
-        blocked: receiverUserCode
+      blocker: senderUserCode,
+      blocked: receiverUserCode
     });
 
     const blockedByThem = await Block.findOne({
-        blocker: receiverUserCode,
-        blocked: senderUserCode
+      blocker: receiverUserCode,
+      blocked: senderUserCode
     });
 
     if (blockedByThem) {
-        return res.status(403).json({
-            message: "You are blocked by this user"
-        });
+      return res.status(403).json({
+        message: "You are blocked by this user"
+      });
     }
 
     if (blockedByMe) {
-        return res.status(403).json({
-            message: "You have blocked this user"
-        });
+      return res.status(403).json({
+        message: "You have blocked this user"
+      });
     }
 
-    // message limit check
+    // Daily message limit check (30 per user per UTC day)
     const now = new Date();
     const todayEpoch = Date.UTC(
       now.getUTCFullYear(),
@@ -141,11 +146,25 @@ const sendMessage = async (req, res) => {
     const message = new Message({
       conversationId,
       sender: senderUserCode,
-      messageText
+      messageText,
+      iv
     });
 
-    // Target exactly the two users' private encrypted rooms for bulletproof global delivery
-    // We include conversation details so receiving frontend can immediately show names without refresh
+    await message.save();
+
+    // Update conversation counters and recency timestamp
+    if (senderUserCode === userA) {
+      conversation.countAtoB += 1;
+      conversation.lastMessageEpochA = new Date(todayEpoch);
+    } else {
+      conversation.countBtoA += 1;
+      conversation.lastMessageEpochB = new Date(todayEpoch);
+    }
+    conversation.lastMessageAt = new Date();
+
+    await conversation.save();
+
+    // Emit live realtime message to both users
     const messagePayload = {
       ...message.toObject(),
       userA,
@@ -155,18 +174,6 @@ const sendMessage = async (req, res) => {
     };
 
     global.io.to(userA).to(userB).emit("receive_message", messagePayload);
-    await message.save();
-
-    // update counters
-    if (senderUserCode === userA) {
-      conversation.countAtoB += 1;
-      conversation.lastMessageEpochA = new Date(todayEpoch);
-    } else {
-      conversation.countBtoA += 1;
-      conversation.lastMessageEpochB = new Date(todayEpoch);
-    }
-
-    await conversation.save();
 
     res.status(201).json({
       message: "Message sent",
@@ -174,9 +181,7 @@ const sendMessage = async (req, res) => {
     });
 
   } catch (error) {
-
     console.error("Send message error:", error.message);
-
     res.status(500).json({
       message: "Server error"
     });
@@ -185,7 +190,6 @@ const sendMessage = async (req, res) => {
 
 const markAsRead = async (req, res) => {
   try {
-
     const { conversationId } = req.params;
     const currentUserCode = req.user?.userCode;
 
@@ -225,14 +229,17 @@ const markAsRead = async (req, res) => {
       }
     );
 
+    if (global.io) {
+      const targetUserCode = conversation.userA === currentUserCode ? conversation.userB : conversation.userA;
+      global.io.to(targetUserCode).emit("messages_read", { conversationId, readBy: currentUserCode });
+    }
+
     res.status(200).json({
       message: "Messages marked as read"
     });
 
   } catch (error) {
-
     console.error("Mark read error:", error.message);
-
     res.status(500).json({
       message: "Server error"
     });

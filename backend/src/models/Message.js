@@ -15,7 +15,12 @@ const messageSchema = new mongoose.Schema({
   messageText: {
     type: String,
     required: true,
-    maxlength: 250
+    maxlength: 1000
+  },
+
+  iv: {
+    type: String,
+    required: true
   },
 
   timestamp: {
@@ -28,5 +33,9 @@ const messageSchema = new mongoose.Schema({
     default: false
   }
 });
+
+// Compound indexes for ultra-fast query performance
+messageSchema.index({ conversationId: 1, timestamp: 1 });
+messageSchema.index({ conversationId: 1, sender: 1, isRead: 1 });
 
 module.exports = mongoose.model("Message", messageSchema);

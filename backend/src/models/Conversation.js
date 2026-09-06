@@ -57,10 +57,20 @@ const conversationSchema = new mongoose.Schema({
     default: null
   },
 
+  lastMessageAt: {
+    type: Date,
+    default: Date.now
+  },
+
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
+
+// Performance indexes for chat list sorting & lookups
+conversationSchema.index({ userA: 1 });
+conversationSchema.index({ userB: 1 });
+conversationSchema.index({ lastMessageAt: -1 });
 
 module.exports = mongoose.model("Conversation", conversationSchema);

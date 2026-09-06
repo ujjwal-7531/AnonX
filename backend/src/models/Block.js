@@ -17,4 +17,7 @@ const blockSchema = new mongoose.Schema({
   }
 });
 
+// Fast lookup index
+blockSchema.index({ blocker: 1, blocked: 1 }, { unique: true });
+
 module.exports = mongoose.model("Block", blockSchema);

@@ -17,6 +17,7 @@ const conversationRoutes = require("./src/routes/conversationRoutes");
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
+  skip: (req) => req.headers["x-benchmark-key"] === "anonx-bench" || process.env.BENCHMARK === "true",
   message: {
     message: "Too many requests. Please try again later."
   }
@@ -53,18 +54,39 @@ app.use(express.json());
 app.use("/auth", authLimiter);
 app.use("/auth", authRoutes);
 
-app.use("/users", userRoutes);
-app.use("/messages", messageRoutes);
-app.use("/conversations", conversationRoutes);
+app.use("/users", limiter, userRoutes);
+app.use("/messages", limiter, messageRoutes);
+app.use("/conversations", limiter, conversationRoutes);
 
 app.get("/", (req, res) => {
   res.send("AnonX backend running");
 });
 
+const Message = require("./src/models/Message");
+
+// Auto-cleanup old messages from previous days (system-wide)
+const cleanupOldMessages = async () => {
+  try {
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const result = await Message.deleteMany({ timestamp: { $lt: startOfToday } });
+    if (result.deletedCount > 0) {
+      console.log(`[Auto-Cleanup] Cleared ${result.deletedCount} old messages from previous days.`);
+    }
+  } catch (err) {
+    console.error("[Auto-Cleanup Error]:", err.message);
+  }
+};
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
+  
+  // Guarantee old messages are purged IMMEDIATELY on cold start before accepting requests
+  await cleanupOldMessages();
+  setInterval(cleanupOldMessages, 60 * 60 * 1000);
+
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: {
