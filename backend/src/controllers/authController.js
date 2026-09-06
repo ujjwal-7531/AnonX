@@ -51,9 +51,10 @@ const sendOTP = async (req, res) => {
       attempts: 0
     });
 
-    await sendOTPEmail(email, otp);
+    // Dispatch email sending asynchronously so client receives instant response
+    sendOTPEmail(email, otp).catch((err) => console.error("[Async Email Dispatch Error]:", err.message));
 
-    console.log(`[Auth] OTP sent to ${email}`);
+    console.log(`[Auth] OTP generated for ${email}`);
 
     res.status(200).json({
       message: "Verification code sent to email"
