@@ -2,14 +2,8 @@ require("dotenv").config();
 const nodemailer = require("nodemailer");
 
 const sendOTPEmail = async (email, otp) => {
-  // Always log OTP to backend console for instant developer testing & log inspection
-  console.log(`\n========================================`);
-  console.log(`🔑 [OTP Code for ${email}]: ${otp}`);
-  console.log(`========================================\n`);
-
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn(`[Nodemailer Warning] EMAIL_USER or EMAIL_PASS environment variables are not configured in your deployment dashboard.`);
-    console.warn(`[Note] Add EMAIL_USER and EMAIL_PASS to your host's environment settings, or check host logs for the OTP.`);
     return;
   }
 
@@ -30,7 +24,7 @@ const sendOTPEmail = async (email, otp) => {
     const mailOptions = {
       from: `"AnonX Verification" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: `[${otp}] Your AnonX Verification Code`,
+      subject: `Your AnonX Verification Code`,
       text: `Your AnonX verification code is ${otp}. It is valid for 5 minutes.`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #0f0f13; border: 1px solid #2e2a4a; border-radius: 12px; color: #ffffff;">
@@ -45,10 +39,9 @@ const sendOTPEmail = async (email, otp) => {
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log(`[Nodemailer] Email sent successfully to ${email} (Message ID: ${info.messageId})`);
+    console.log(`[Nodemailer] OTP Email sent successfully to ${email} (Message ID: ${info.messageId})`);
   } catch (error) {
     console.error(`[Nodemailer Error] Failed to send email to ${email}:`, error.message);
-    console.warn(`[Note] Check backend deployment logs for [OTP Code] to complete verification.`);
   }
 };
 
