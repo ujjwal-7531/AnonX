@@ -8,7 +8,12 @@ function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  
+  // Specific field error states
+  const [usernameError, setUsernameError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [generalError, setGeneralError] = useState("");
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -20,37 +25,40 @@ function Login() {
     }
   }, [navigate]);
 
+  const clearErrors = () => {
+    setUsernameError("");
+    setPasswordError("");
+    setGeneralError("");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
+    clearErrors();
 
     const trimmedUsername = username.trim().toLowerCase();
     const trimmedPassword = password.trim();
+    let hasValidationError = false;
 
     if (!trimmedUsername) {
-      setError("Username is required");
-      return;
-    }
-
-    if (trimmedUsername.length < 3 || trimmedUsername.length > 30) {
-      setError("Username must be between 3 and 30 characters");
-      return;
-    }
-
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
-      setError("Username can only contain letters, numbers, and underscores");
-      return;
+      setUsernameError("Username is required");
+      hasValidationError = true;
+    } else if (trimmedUsername.length < 3 || trimmedUsername.length > 30) {
+      setUsernameError("Username must be between 3 and 30 characters");
+      hasValidationError = true;
+    } else if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+      setUsernameError("Only letters, numbers, and underscores allowed");
+      hasValidationError = true;
     }
 
     if (!trimmedPassword) {
-      setError("Password is required");
-      return;
+      setPasswordError("Password is required");
+      hasValidationError = true;
+    } else if (trimmedPassword.length < 6) {
+      setPasswordError("Password must be at least 6 characters long");
+      hasValidationError = true;
     }
 
-    if (trimmedPassword.length < 6) {
-      setError("Password must be at least 6 characters long");
-      return;
-    }
+    if (hasValidationError) return;
 
     setLoading(true);
     const endpoint = isSignUp ? "/auth/register" : "/auth/login";
@@ -72,7 +80,14 @@ function Login() {
       }
     } catch (err) {
       const errMsg = err.response?.data?.message || `Failed to ${isSignUp ? "create account" : "log in"}`;
-      setError(errMsg);
+      
+      if (errMsg.toLowerCase().includes("username")) {
+        setUsernameError(errMsg);
+      } else if (errMsg.toLowerCase().includes("password")) {
+        setPasswordError(errMsg);
+      } else {
+        setGeneralError(errMsg);
+      }
       toast.error(errMsg);
     } finally {
       setLoading(false);
@@ -102,7 +117,7 @@ function Login() {
             type="button"
             onClick={() => {
               setIsSignUp(false);
-              setError("");
+              clearErrors();
             }}
             className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
               !isSignUp
@@ -116,7 +131,7 @@ function Login() {
             type="button"
             onClick={() => {
               setIsSignUp(true);
-              setError("");
+              clearErrors();
             }}
             className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
               isSignUp
@@ -139,16 +154,16 @@ function Login() {
               placeholder="e.g. shadow_user"
               autoFocus
               className={`w-full bg-neutral-800/60 text-white border ${
-                error ? "border-red-500/60 focus:border-red-500" : "border-neutral-700/60 focus:border-violet-500"
-              } p-3 rounded-xl focus:outline-none focus:ring-1 ${
-                error ? "focus:ring-red-500" : "focus:ring-violet-500"
-              } transition-all placeholder-neutral-500 text-sm`}
+                usernameError ? "border-red-500/60 focus:border-red-500 focus:ring-red-500" : "border-neutral-700/60 focus:border-violet-500 focus:ring-violet-500"
+              } p-3 rounded-xl focus:outline-none focus:ring-1 transition-all placeholder-neutral-500 text-sm`}
               value={username}
               onChange={(e) => {
                 setUsername(e.target.value);
-                if (error) setError("");
+                if (usernameError) setUsernameError("");
+                if (generalError) setGeneralError("");
               }}
             />
+            {usernameError && <p className="text-red-400 text-xs mt-1.5 ml-1">{usernameError}</p>}
           </div>
 
           <div className="mb-5">
@@ -159,18 +174,23 @@ function Login() {
               type="password"
               placeholder="••••••••"
               className={`w-full bg-neutral-800/60 text-white border ${
-                error ? "border-red-500/60 focus:border-red-500" : "border-neutral-700/60 focus:border-violet-500"
-              } p-3 rounded-xl focus:outline-none focus:ring-1 ${
-                error ? "focus:ring-red-500" : "focus:ring-violet-500"
-              } transition-all placeholder-neutral-500 text-sm`}
+                passwordError ? "border-red-500/60 focus:border-red-500 focus:ring-red-500" : "border-neutral-700/60 focus:border-violet-500 focus:ring-violet-500"
+              } p-3 rounded-xl focus:outline-none focus:ring-1 transition-all placeholder-neutral-500 text-sm`}
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
-                if (error) setError("");
+                if (passwordError) setPasswordError("");
+                if (generalError) setGeneralError("");
               }}
             />
-            {error && <p className="text-red-400 text-xs mt-2 ml-1">{error}</p>}
+            {passwordError && <p className="text-red-400 text-xs mt-1.5 ml-1">{passwordError}</p>}
           </div>
+
+          {generalError && (
+            <div className="mb-4 p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-center">
+              <p className="text-red-400 text-xs">{generalError}</p>
+            </div>
+          )}
 
           <button
             type="submit"
