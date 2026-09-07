@@ -51,6 +51,10 @@ app.use("/users", limiter, userRoutes);
 app.use("/messages", limiter, messageRoutes);
 app.use("/conversations", limiter, conversationRoutes);
 
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 const path = require("path");
 const fs = require("fs");
 
