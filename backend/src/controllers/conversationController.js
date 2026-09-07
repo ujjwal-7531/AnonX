@@ -85,11 +85,11 @@ const getUserConversations = async (req, res) => {
         let sentCount = 0;
 
         if (conv.userA === currentUserCode) {
-          displayName = conv.nicknameForA || conv.aliasForA;
+          displayName = conv.nicknameForA || conv.aliasForB;
           targetUserCode = conv.userB;
           sentCount = (!conv.lastMessageEpochA || conv.lastMessageEpochA.getTime() !== todayEpoch) ? 0 : (conv.countAtoB || 0);
         } else {
-          displayName = conv.nicknameForB || conv.aliasForB;
+          displayName = conv.nicknameForB || conv.aliasForA;
           targetUserCode = conv.userA;
           sentCount = (!conv.lastMessageEpochB || conv.lastMessageEpochB.getTime() !== todayEpoch) ? 0 : (conv.countBtoA || 0);
         }

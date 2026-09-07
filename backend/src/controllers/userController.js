@@ -127,8 +127,8 @@ const searchUser = async (req, res) => {
     res.status(200).json({
       conversationId: conversation._id,
       alias: conversation.userA === currentUserCode
-        ? conversation.aliasForA
-        : conversation.aliasForB,
+        ? conversation.aliasForB
+        : conversation.aliasForA,
       targetUserCode,
       targetPublicKey: targetUser.publicKey,
       myPublicKey: currentUser?.publicKey || null,

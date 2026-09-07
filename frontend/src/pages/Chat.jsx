@@ -180,7 +180,7 @@ function Chat() {
                 : c
             );
           } else {
-            const aliasToShow = userCode === message.userA ? message.aliasForA : message.aliasForB;
+            const aliasToShow = userCode === message.userA ? message.aliasForB : message.aliasForA;
 
             const newConv = {
               _id: message.conversationId,
