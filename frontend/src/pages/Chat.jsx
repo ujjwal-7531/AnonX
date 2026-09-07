@@ -80,62 +80,65 @@ function Chat() {
     }
   }, [userCode]);
 
+  const activeConvId = selectedConv?.conversationId || selectedConv?._id;
+
   useEffect(() => {
-    if (selectedConv) {
-      // Fetch message history for selected chat and decrypt
-      const fetchMessages = async () => {
-        try {
-          const activeConvId = selectedConv.conversationId || selectedConv._id;
-          const partnerCode = selectedConv.targetUserCode;
-          
-          // Derive shared key for selected chat (fetch partner public key if missing)
-          let targetPubKey = selectedConv.targetPublicKey;
-          if (!targetPubKey && partnerCode) {
-            try {
-              const keyRes = await axios.get(`/users/public-key/${partnerCode}`);
-              targetPubKey = keyRes.data.publicKey;
-              if (targetPubKey) {
-                setSelectedConv(prev => prev ? { ...prev, targetPublicKey: targetPubKey } : prev);
-                setConversations(prev => prev.map(c => 
-                  (c.conversationId || c._id) === activeConvId ? { ...c, targetPublicKey: targetPubKey } : c
-                ));
-              }
-            } catch (err) {
-              console.warn("Could not fetch target public key:", err);
+    if (!activeConvId) return;
+
+    // Fetch message history for selected chat and decrypt
+    const fetchMessages = async () => {
+      try {
+        const partnerCode = selectedConv?.targetUserCode;
+        
+        // Derive shared key for selected chat (fetch partner public key if missing)
+        let targetPubKey = selectedConv?.targetPublicKey;
+        if (!targetPubKey && partnerCode) {
+          try {
+            const keyRes = await axios.get(`/users/public-key/${partnerCode}`);
+            targetPubKey = keyRes.data.publicKey;
+            if (targetPubKey) {
+              setConversations(prev => prev.map(c => 
+                (c.conversationId || c._id) === activeConvId ? { ...c, targetPublicKey: targetPubKey } : c
+              ));
             }
+          } catch (err) {
+            console.warn("Could not fetch target public key:", err);
           }
+        }
 
-          let key = null;
-          if (targetPubKey) {
-            key = await deriveSharedKey(targetPubKey);
-          }
-          setSharedKey(key);
+        let key = null;
+        if (targetPubKey) {
+          key = await deriveSharedKey(targetPubKey);
+        }
+        setSharedKey(key);
 
-          const res = await axios.get(`/messages/${activeConvId}`);
-          const rawMsgs = res.data.messages || [];
+        const res = await axios.get(`/messages/${activeConvId}`);
+        const rawMsgs = res.data.messages || [];
 
-          // Decrypt messages asynchronously
-          const decryptedMsgs = await Promise.all(
-            rawMsgs.map(async (m) => {
-              const plainText = await decryptMessage(m.messageText, m.iv, key);
-              return { ...m, messageText: plainText };
-            })
-          );
+        // Decrypt messages asynchronously
+        const decryptedMsgs = await Promise.all(
+          rawMsgs.map(async (m) => {
+            const plainText = await decryptMessage(m.messageText, m.iv, key);
+            return { ...m, messageText: plainText };
+          })
+        );
 
-          setMessages(decryptedMsgs);
+        setMessages(decryptedMsgs);
+
+        // Mark unread messages as read
+        if (selectedConv?.unreadCount > 0) {
           await axios.patch(`/messages/read/${activeConvId}`);
           setConversations(prev => prev.map(c => 
             (c.conversationId || c._id) === activeConvId ? { ...c, unreadCount: 0 } : c
           ));
-          setSelectedConv(prev => prev ? { ...prev, unreadCount: 0 } : prev);
-        } catch (error) {
-          console.error("Error fetching messages:", error);
         }
-      };
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+      }
+    };
 
-      fetchMessages();
-    }
-  }, [selectedConv, userCode]);
+    fetchMessages();
+  }, [activeConvId, userCode]);
 
   // Global REAL-TIME message listener 
   useEffect(() => {
@@ -624,11 +627,11 @@ function Chat() {
             <div className="relative">
               <input
                 type="text"
-                placeholder="Find unique user ID..."
+                placeholder="Search by username or user ID..."
                 className="w-full bg-neutral-800 text-white text-sm border border-neutral-700/50 rounded-lg p-2.5 pl-3 focus:outline-none focus:ring-1 focus:ring-violet-500 font-mono transition-colors placeholder-neutral-500 shadow-inner"
                 value={searchCode}
                 onChange={(e) => {
-                  setSearchCode(e.target.value.replace(/[^0-9a-zA-Z-]/g, ''));
+                  setSearchCode(e.target.value.replace(/[^0-9a-zA-Z_-]/g, ''));
                   if (searchError) setSearchError("");
                 }}
               />

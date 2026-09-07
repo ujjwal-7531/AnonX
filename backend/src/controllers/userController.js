@@ -54,14 +54,18 @@ const searchUser = async (req, res) => {
       });
     }
 
-    // Prevent searching yourself
-    if (userCode === currentUserCode) {
-      return res.status(400).json({
-        message: "You cannot search your own ID"
-      });
+    const queryStr = (userCode || "").trim();
+    if (!queryStr) {
+      return res.status(400).json({ message: "Search term is required" });
     }
 
-    const targetUser = await User.findOne({ userCode });
+    // Support searching by either 6-char userCode OR username
+    const targetUser = await User.findOne({
+      $or: [
+        { userCode: queryStr },
+        { username: queryStr.toLowerCase() }
+      ]
+    });
 
     if (!targetUser) {
       return res.status(404).json({
@@ -69,9 +73,18 @@ const searchUser = async (req, res) => {
       });
     }
 
+    const targetUserCode = targetUser.userCode;
+
+    // Prevent searching yourself
+    if (targetUserCode === currentUserCode) {
+      return res.status(400).json({
+        message: "You cannot search your own account"
+      });
+    }
+
     // Check if target user blocked current user
     const blockedByTarget = await Block.findOne({
-      blocker: userCode,
+      blocker: targetUserCode,
       blocked: currentUserCode
     });
 
@@ -81,7 +94,7 @@ const searchUser = async (req, res) => {
       });
     }
 
-    const codes = [currentUserCode, userCode].sort();
+    const codes = [currentUserCode, targetUserCode].sort();
     const conversationKey = `${codes[0]}_${codes[1]}`;
 
     let conversation = await Conversation.findOne({ conversationKey });
@@ -116,7 +129,7 @@ const searchUser = async (req, res) => {
       alias: conversation.userA === currentUserCode
         ? conversation.aliasForA
         : conversation.aliasForB,
-      targetUserCode: userCode,
+      targetUserCode,
       targetPublicKey: targetUser.publicKey,
       myPublicKey: currentUser?.publicKey || null,
       sentCount: conversation.userA === currentUserCode 
